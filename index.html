@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interactive AI Canvas</title>
+  <link rel="icon" type="image/png" href="icons8-chinchilla-60.png">
+  <style>
+    :root {
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --bg: #0c0e12;
+      --panel: #12151b;
+      --surface: #171b23;
+      --border: #2a303d;
+      --border-strong: #3c4557;
+      --text: #e6ebf2;
+      --muted: #8892a4;
+      --accent: #3b82f6;
+      --accent-ink: #ffffff;
+      --ok: #34d399;
+      --pen: #f59e0b;
+      --pan: #38bdf8;
+      --voice: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      border-radius: 0;
+    }
+
+    body {
+      font-family: var(--mono);
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 356px;
+      overflow: hidden;
+      font-size: 13px;
+    }
+
+    .stage-wrap {
+      position: relative;
+      height: 100vh;
+      background-color: var(--bg);
+      overflow: hidden;
+      cursor: grab;
+    }
+
+    .stage-wrap.panning {
+      cursor: grabbing;
+    }
+
+    .world {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 4000px;
+      height: 4000px;
+      background-color: var(--bg);
+      background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+      background-size: 24px 24px;
+      transform: translate3d(0px, 0px, 0);
+      will-change: transform;
+    }
+
+    #pen-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* Ink stays below the cards (z-index 5). At z-25 this overlay sat above every
+       block, so with the pen armed you could not click a quiz answer or drag. */
+    #pen-layer.drawing {
+      pointer-events: auto;
+      cursor: crosshair;
+    }
+
+    .card {
+      position: absolute;
+      width: 268px;
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.55);
+      z-index: 10;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 6px 8px 6px 10px;
+      cursor: grab;
+      user-select: none;
+    }
+
+    .card-header:active {
+      cursor: grabbing;
+      color: var(--text);
+    }
+
+    .card-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .card-close {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid transparent;
+      padding: 1px 5px;
+      font-size: 10.5px;
+      line-height: 1.2;
+      flex-shrink: 0;
+    }
+
+    .card-close:hover {
+      background: #2a1418;
+      color: #fca5a5;
+      border-color: #7f1d1d;
+      filter: none;
+    }
+
+    .card-body {
+      padding: 10px;
+    }
+
+    .plot-note {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      font-size: 9.5px;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin-top: 5px;
+      overflow: hidden;
+    }
+
+    .plot-note span:first-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .card canvas {
+      width: 100%;
+      height: 124px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      display: block;
+    }
+
+    .note-text,
+    .quiz-q {
+      font-size: 12.5px;
+      line-height: 1.45;
+      margin-bottom: 10px;
+      white-space: pre-wrap;
+    }
+
+    .quiz-a {
+      display: none;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--ok);
+      background: #0e1c17;
+      border: 1px solid #1f4638;
+      padding: 7px 9px;
+      margin-top: 8px;
+    }
+
+    button {
+      font-family: var(--mono);
+      background: var(--accent);
+      color: var(--accent-ink);
+      border: 1px solid var(--accent);
+      padding: 6px 8px;
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+    }
+
+    button:hover {
+      filter: brightness(1.08);
+    }
+
+    button.secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+    }
+
+    button.secondary.active-pen {
+      background: var(--pen);
+      color: #0c0e12;
+      border-color: var(--pen);
+      font-weight: 700;
+    }
+
+    button.secondary.active-pan {
+      background: var(--pan);
+      color: #0c0e12;
+      border-color: var(--pan);
+      font-weight: 700;
+    }
+
+    button.secondary.active-voice {
+      background: var(--voice);
+      color: #ffffff;
+      border-color: var(--voice);
+      font-weight: 700;
+    }
+
+    .sidebar {
+      background: var(--panel);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      z-index: 30;
+    }
+
+    .sidebar-top {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .sidebar-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+    }
+
+    .indicators {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      font-size: 11px;
+    }
+
+    .ind-cell {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 6px 7px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      color: var(--muted);
+    }
+
+    .ind-val {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .ind-val.live-pen { color: var(--pen); }
+    .ind-val.live-pan { color: var(--pan); }
+    .ind-val.live-voice { color: var(--ok); }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+
+    .toolbar .span-2 {
+      grid-column: 1 / -1;
+    }
+
+    .shortcut-hint {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.03em;
+    }
+
+    .transcript-strip {
+      display: none;
+      padding: 7px 12px;
+      font-size: 11px;
+      color: #fde68a;
+      background: #1a160c;
+      border-bottom: 1px solid #453513;
+    }
+
+    .transcript-strip.visible {
+      display: block;
+    }
+
+    .history-header {
+      padding: 8px 12px;
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      background: #0f1217;
+    }
+
+    .history-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 11.5px;
+      line-height: 1.45;
+    }
+
+    .history-item {
+      border: 1px solid var(--border);
+      background: var(--bg);
+      padding: 8px;
+    }
+
+    .history-meta {
+      font-size: 10px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .history-prompt {
+      color: #93c5fd;
+      margin-bottom: 4px;
+    }
+
+    .history-reply {
+      color: var(--text);
+    }
+
+    .prompt-bar-wrap {
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .input-shell {
+      display: flex;
+      align-items: stretch;
+      border: 1px solid var(--border-strong);
+      background: var(--bg);
+    }
+
+    .input-shell:focus-within {
+      border-color: var(--accent);
+    }
+
+    .input-shell input {
+      flex: 1;
+      min-width: 0;
+      font-family: var(--mono);
+      background: transparent;
+      color: var(--text);
+      border: none;
+      padding: 8px 10px;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .input-shell button {
+      border: none;
+      border-left: 1px solid var(--border-strong);
+      padding: 0 12px;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage-wrap" id="stage">
+    <div class="world" id="world">
+      <canvas id="pen-layer"></canvas>
+    </div>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <div class="sidebar-title">[ CANVAS // TELEMETRY ]</div>
+      <div class="indicators">
+        <div class="ind-cell">
+          <span>INK</span>
+          <span id="ind-pen" class="ind-val">OFF</span>
+        </div>
+        <div class="ind-cell">
+          <span>VOICE</span>
+          <span id="ind-voice" class="ind-val">OFF</span>
+        </div>
+        <div class="ind-cell">
+          <span>BLOCKS</span>
+          <span id="ind-blocks" class="ind-val">0</span>
+        </div>
+      </div>
+      <div class="toolbar">
+        <button id="pan-toggle" class="secondary active-pan" type="button">[H] PAN: ON</button>
+        <button id="pen-toggle" class="secondary" type="button">[P] PEN: OFF</button>
+        <button id="voice-toggle" class="secondary" type="button">[V] VOICE: OFF</button>
+        <button id="clear-pen" class="secondary" type="button">[C] CLEAR INK</button>
+        <button id="reset-pan" class="secondary span-2" type="button">[R] RESET PAN (0, 0)</button>
+      </div>
+      <div class="shortcut-hint">KEYS: H=PAN | P=PEN | V=VOICE | C=CLEAR | R=RESET | /=PROMPT</div>
+    </div>
+
+    <div id="transcript-strip" class="transcript-strip">MIC: ...</div>
+
+    <div class="history-header">[ SESSION // HISTORY ]</div>
+    <div class="history-list" id="history-list">
+      <div class="history-item">
+        <div class="history-meta">SYS // READY</div>
+        <div class="history-reply">Shortcuts active (H/P/V/C/R, / to focus prompt, Esc to exit input).</div>
+      </div>
+    </div>
+
+    <form id="prompt-form" class="prompt-bar-wrap">
+      <div class="input-shell">
+        <input
+          id="prompt-input"
+          type="text"
+          placeholder="Enter topic or command... [/]"
+          autocomplete="off"
+          required
+        />
+        <button type="submit">SEND</button>
+      </div>
+    </form>
+  </aside>
+
+  <script>
+    const ROAR_CONFIG = {
+      endpoint: "",
+      apiKey: "",
+      model: "gpt-4o-mini"
+    };
+
+    const BLOCK_FRAMEWORK_SPEC = {
+      response_shape: {
+        reply: "string",
+        actions: [
+          {
+            id: "optional string",
+            kind: "graph | quiz | note | <custom_kind>",
+            title: "string",
+            x: "number (world x)",
+            y: "number (world y)",
+            w: "number (optional width, default 268)",
+            data: "object"
+          }
+        ]
+      },
+      registered_kinds: {
+        graph: { data: { equation: "string, e.g. 'x^2 - 4*x + 3'" } },
+        quiz: { data: { question: "string", answer: "string" } },
+        note: { data: { text: "string" } }
+      },
+      custom_kind_fallback: {
+        description: "If no registered kind fits, invent a concise snake_case kind and put structured lists in data.items or data.steps, or key/value fields in data."
+      }
+    };
+
+    const SYSTEM_PROMPT = `
+You are an AI spatial study co-pilot for CANVAS.
+Respond ONLY with valid JSON matching the provided block_schema.
+Avoid overlapping existing blocks in current_blocks.
+`.trim();
+
+    const stage = document.getElementById("stage");
+    const world = document.getElementById("world");
+    const penCanvas = document.getElementById("pen-layer");
+    const penCtx = penCanvas.getContext("2d");
+    const panToggle = document.getElementById("pan-toggle");
+    const penToggle = document.getElementById("pen-toggle");
+    const voiceToggle = document.getElementById("voice-toggle");
+    const clearPenBtn = document.getElementById("clear-pen");
+    const resetPanBtn = document.getElementById("reset-pan");
+    const indPen = document.getElementById("ind-pen");
+    const indVoice = document.getElementById("ind-voice");
+    const indBlocks = document.getElementById("ind-blocks");
+    const transcriptStrip = document.getElementById("transcript-strip");
+    const historyList = document.getElementById("history-list");
+    const promptForm = document.getElementById("prompt-form");
+    const promptInput = document.getElementById("prompt-input");
+
+    const WORLD_SIZE = 4000;
+
+    const boardState = {
+      elements: [],
+      panX: 0,
+      panY: 0,
+      panMode: true,
+      isPanning: false,
+      spaceHeld: false,
+      penMode: false,
+      drawing: false,
+      voiceMode: false
+    };
+
+    function applyPanTransform() {
+      world.style.transform = `translate3d(${boardState.panX}px, ${boardState.panY}px, 0)`;
+    }
+
+    function resetPanToOrigin() {
+      boardState.panX = 0;
+      boardState.panY = 0;
+      applyPanTransform();
+      addHistoryEntry("PAN RESET", "View snapped back to origin (0, 0).", 0);
+    }
+
+    function initPenCanvas() {
+      penCanvas.width = WORLD_SIZE;
+      penCanvas.height = WORLD_SIZE;
+      penCtx.strokeStyle = "#f59e0b";
+      penCtx.lineWidth = 2;
+      penCtx.lineCap = "square";
+    }
+    initPenCanvas();
+
+    function updateBlockCounter() {
+      indBlocks.textContent = String(boardState.elements.length);
+    }
+
+    function removeElement(record, card) {
+      card.remove();
+      boardState.elements = boardState.elements.filter((el) => el.id !== record.id);
+      updateBlockCounter();
+    }
+
+    function addHistoryEntry(promptText, replyText, spawnedCount) {
+      const now = new Date().toTimeString().slice(0, 8);
+      const item = document.createElement("div");
+      item.className = "history-item";
+      item.innerHTML = `
+        <div class="history-meta">${now} // +${spawnedCount} BLOCK(S)</div>
+        <div class="history-prompt"></div>
+        <div class="history-reply"></div>
+      `;
+      item.querySelector(".history-prompt").textContent = `> ${promptText}`;
+      item.querySelector(".history-reply").textContent = replyText;
+      historyList.appendChild(item);
+      historyList.scrollTop = historyList.scrollHeight;
+    }
+
+    function setPanMode(enabled) {
+      boardState.panMode = enabled;
+      if (enabled && boardState.penMode) {
+        setPenMode(false);
+      }
+      panToggle.classList.toggle("active-pan", boardState.panMode);
+      panToggle.textContent = boardState.panMode ? "[H] PAN: ON" : "[H] PAN: OFF";
+    }
+
+    function setPenMode(enabled) {
+      boardState.penMode = enabled;
+      if (enabled && boardState.panMode) {
+        boardState.panMode = false;
+        panToggle.classList.remove("active-pan");
+        panToggle.textContent = "[H] PAN: OFF";
+      }
+      penCanvas.classList.toggle("drawing", boardState.penMode);
+      penToggle.classList.toggle("active-pen", boardState.penMode);
+      penToggle.textContent = boardState.penMode ? "[P] PEN: ON" : "[P] PEN: OFF";
+      indPen.textContent = boardState.penMode ? "ACTIVE" : "OFF";
+      indPen.classList.toggle("live-pen", boardState.penMode);
+    }
+
+    function clearInk() {
+      penCtx.clearRect(0, 0, penCanvas.width, penCanvas.height);
+    }
+
+    function toggleVoiceMode() {
+      if (!recognition) {
+        addHistoryEntry("VOICE", "SpeechRecognition not supported in this browser.", 0);
+        return;
+      }
+      boardState.voiceMode = !boardState.voiceMode;
+      voiceToggle.classList.toggle("active-voice", boardState.voiceMode);
+      voiceToggle.textContent = boardState.voiceMode ? "[V] VOICE: ON" : "[V] VOICE: OFF";
+      indVoice.textContent = boardState.voiceMode ? "LIVE" : "OFF";
+      indVoice.classList.toggle("live-voice", boardState.voiceMode);
+
+      if (boardState.voiceMode) {
+        transcriptStrip.textContent = "MIC LIVE // SPEAK A COMMAND...";
+        transcriptStrip.classList.add("visible");
+        try { recognition.start(); } catch (_) {}
+      } else {
+        transcriptStrip.classList.remove("visible");
+        window.speechSynthesis?.cancel();
+        try { recognition.stop(); } catch (_) {}
+      }
+    }
+
+    let panStartX = 0, panStartY = 0, originPanX = 0, originPanY = 0;
+
+    window.addEventListener("keydown", (e) => {
+      const target = e.target;
+      const isTyping =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+
+      if (e.key === "Escape" && isTyping) {
+        target.blur();
+        return;
+      }
+
+      if (isTyping || e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (e.code === "Space") {
+        boardState.spaceHeld = true;
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      if (key === "h") {
+        e.preventDefault();
+        setPanMode(!boardState.panMode);
+      } else if (key === "p") {
+        e.preventDefault();
+        setPenMode(!boardState.penMode);
+      } else if (key === "v") {
+        e.preventDefault();
+        toggleVoiceMode();
+      } else if (key === "c") {
+        e.preventDefault();
+        clearInk();
+      } else if (key === "r") {
+        e.preventDefault();
+        resetPanToOrigin();
+      } else if (e.key === "/") {
+        e.preventDefault();
+        promptInput.focus();
+      }
+    });
+
+    window.addEventListener("keyup", (e) => {
+      if (e.code === "Space") {
+        boardState.spaceHeld = false;
+      }
+    });
+
+    stage.addEventListener("pointerdown", (e) => {
+      if (boardState.penMode) return;
+      const clickedCard = e.target.closest(".card");
+      const canPan = boardState.panMode || e.button === 1 || boardState.spaceHeld;
+      if (!canPan || (clickedCard && !boardState.spaceHeld && e.button !== 1)) return;
+
+      boardState.isPanning = true;
+      stage.classList.add("panning");
+      stage.setPointerCapture(e.pointerId);
+      panStartX = e.clientX;
+      panStartY = e.clientY;
+      originPanX = boardState.panX;
+      originPanY = boardState.panY;
+    });
+
+    stage.addEventListener("pointermove", (e) => {
+      if (!boardState.isPanning) return;
+      const minX = Math.min(0, stage.clientWidth - WORLD_SIZE);
+      const minY = Math.min(0, stage.clientHeight - WORLD_SIZE);
+      const nextX = originPanX + (e.clientX - panStartX);
+      const nextY = originPanY + (e.clientY - panStartY);
+      boardState.panX = Math.max(minX, Math.min(0, nextX));
+      boardState.panY = Math.max(minY, Math.min(0, nextY));
+      applyPanTransform();
+    });
+
+    stage.addEventListener("pointerup", () => {
+      boardState.isPanning = false;
+      stage.classList.remove("panning");
+    });
+
+    stage.addEventListener("pointercancel", () => {
+      boardState.isPanning = false;
+      stage.classList.remove("panning");
+    });
+
+    panToggle.addEventListener("click", () => setPanMode(!boardState.panMode));
+    penToggle.addEventListener("click", () => setPenMode(!boardState.penMode));
+    clearPenBtn.addEventListener("click", clearInk);
+    resetPanBtn.addEventListener("click", resetPanToOrigin);
+    voiceToggle.addEventListener("click", toggleVoiceMode);
+
+    function clientToWorld(clientX, clientY) {
+      const sr = stage.getBoundingClientRect();
+      return {
+        x: clientX - sr.left - boardState.panX,
+        y: clientY - sr.top - boardState.panY
+      };
+    }
+
+    penCanvas.addEventListener("pointerdown", (e) => {
+      if (!boardState.penMode) return;
+      boardState.drawing = true;
+      penCanvas.setPointerCapture(e.pointerId);
+      const pt = clientToWorld(e.clientX, e.clientY);
+      penCtx.beginPath();
+      penCtx.moveTo(pt.x, pt.y);
+    });
+
+    penCanvas.addEventListener("pointermove", (e) => {
+      if (!boardState.penMode || !boardState.drawing) return;
+      const pt = clientToWorld(e.clientX, e.clientY);
+      penCtx.lineTo(pt.x, pt.y);
+      penCtx.stroke();
+    });
+
+    penCanvas.addEventListener("pointerup", () => {
+      boardState.drawing = false;
+    });
+
+    penCanvas.addEventListener("pointercancel", () => {
+      boardState.drawing = false;
+    });
+
+    function makeDraggable(card, record) {
+      const handle = card.querySelector(".card-header");
+      let dragging = false, grabOffsetX = 0, grabOffsetY = 0;
+
+      handle.addEventListener("pointerdown", (e) => {
+        if (e.target.closest(".card-close")) return;
+        if (boardState.spaceHeld || e.button === 1) return;
+        e.stopPropagation();
+        dragging = true;
+        handle.setPointerCapture(e.pointerId);
+        const wPt = clientToWorld(e.clientX, e.clientY);
+        grabOffsetX = wPt.x - record.x;
+        grabOffsetY = wPt.y - record.y;
+      });
+
+      handle.addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+        const wPt = clientToWorld(e.clientX, e.clientY);
+        const x = Math.max(0, Math.min(WORLD_SIZE - card.offsetWidth, wPt.x - grabOffsetX));
+        const y = Math.max(0, Math.min(WORLD_SIZE - card.offsetHeight, wPt.y - grabOffsetY));
+        record.x = x;
+        record.y = y;
+        card.style.left = `${x}px`;
+        card.style.top = `${y}px`;
+      });
+
+      handle.addEventListener("pointerup", () => {
+        dragging = false;
+      });
+
+      handle.addEventListener("pointercancel", () => {
+        dragging = false;
+      });
+    }
+
+    const EXPR_FUNCS = {
+      sin: Math.sin, cos: Math.cos, tan: Math.tan, asin: Math.asin, acos: Math.acos,
+      atan: Math.atan, sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh,
+      sqrt: Math.sqrt, cbrt: Math.cbrt, abs: Math.abs, exp: Math.exp,
+      ln: Math.log, log: Math.log10, log10: Math.log10, floor: Math.floor,
+      ceil: Math.ceil, round: Math.round, sign: Math.sign
+    };
+    const EXPR_CONSTS = { pi: Math.PI, PI: Math.PI, e: Math.E, E: Math.E };
+
+    // Compile "x^2 - 4*x + 3" into a closure. Identifiers are whitelisted first, so
+    // a model-supplied equation can never smuggle fetch()/alert()/constructor in.
+    function compileExpression(expr) {
+      const src = String(expr || "")
+        .trim()
+        .replace(/^[a-zA-Z]\s*\(\s*x\s*\)\s*=/, "")
+        .trim();
+      if (!src || !/^[0-9a-zA-Z_+\-*/().,\s^]*$/.test(src)) return null;
+
+      const idents = src.match(/[a-zA-Z_][a-zA-Z_0-9]*/g) || [];
+      for (const id of idents) {
+        if (id === "x") continue;
+        if (!(id in EXPR_FUNCS) && !(id in EXPR_CONSTS)) return null;
+      }
+
+      // "^" -> Math.pow with a bounded exponent, so "-x^2" stays valid JS
+      const body = src.replace(
+        /([a-zA-Z_0-9.)]+)\s*\^\s*(\([^()]*\)|[0-9.]+|[a-zA-Z_][a-zA-Z_0-9]*)/g,
+        "Math.pow($1,$2)"
+      );
+
+      try {
+        const fn = Function(
+          "x", "F", "C",
+          `const {${Object.keys(EXPR_FUNCS)}} = F; const {${Object.keys(EXPR_CONSTS)}} = C; return (${body});`
+        );
+        return (x) => {
+          try {
+            const v = fn(x, EXPR_FUNCS, EXPR_CONSTS);
+            return typeof v === "number" ? v : NaN;
+          } catch (_) {
+            return NaN;
+          }
+        };
+      } catch (_) {
+        return null;
+      }
+    }
+
+    const plotRegistry = new Set();
+
+    function registerPlot(canvas, expr, noteEl) {
+      const draw = () => {
+        if (!canvas.isConnected) { plotRegistry.delete(draw); return; }
+        drawSimplePlot(canvas, expr, noteEl);
+      };
+      plotRegistry.add(draw);
+      if (typeof ResizeObserver !== "undefined") new ResizeObserver(draw).observe(canvas);
+      requestAnimationFrame(draw);
+    }
+
+    window.addEventListener("resize", () => plotRegistry.forEach((d) => d()));
+
+    function drawSimplePlot(canvas, expr, noteEl) {
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      if (!w || !h) return false; // not laid out yet; caller retries on next frame
+
+      const ctx = canvas.getContext("2d");
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+
+      const cx = w / 2;
+      const cy = h / 2;
+      // square units: one unit is the same number of px on both axes
+      const unit = Math.max(12, Math.min(34, Math.min(w, h) / 8));
+
+      ctx.strokeStyle = "#1a202b";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let gx = cx % unit; gx <= w; gx += unit) { ctx.moveTo(gx, 0); ctx.lineTo(gx, h); }
+      for (let gy = cy % unit; gy <= h; gy += unit) { ctx.moveTo(0, gy); ctx.lineTo(w, gy); }
+      ctx.stroke();
+
+      ctx.strokeStyle = "#3c4557";
+      ctx.beginPath();
+      ctx.moveTo(0, cy); ctx.lineTo(w, cy);
+      ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
+      ctx.stroke();
+
+      const fn = compileExpression(expr);
+      if (!fn) {
+        ctx.fillStyle = "#ef4444";
+        ctx.font = "10px ui-monospace, monospace";
+        ctx.fillText("UNPARSED EXPRESSION", 8, h - 8);
+        if (noteEl && noteEl.firstChild) noteEl.firstChild.textContent = "INVALID";
+        return true;
+      }
+
+      ctx.strokeStyle = "#60a5fa";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      let pen = false;
+      let prevPy = null;
+      for (let px = 0; px <= w; px++) {
+        const y = fn((px - cx) / unit);
+        if (!Number.isFinite(y)) { pen = false; prevPy = null; continue; }
+        const py = cy - y * unit;
+        // break the path off-screen and across asymptotes (tan, 1/x)
+        if (py < -h * 2 || py > h * 3) { pen = false; prevPy = null; continue; }
+        if (pen && prevPy !== null && Math.abs(py - prevPy) > h * 0.7) pen = false;
+        if (pen) ctx.lineTo(px, py);
+        else { ctx.moveTo(px, py); pen = true; }
+        prevPy = py;
+      }
+      ctx.stroke();
+
+      if (noteEl && noteEl.firstChild) {
+        noteEl.firstChild.textContent = expr;
+        if (noteEl.lastChild) noteEl.lastChild.textContent = `1u=${unit.toFixed(0)}px`;
+      }
+      return true;
+    }
+
+    const ELEMENT_RENDERERS = {
+      graph(body, action) {
+        const d = action.data || action;
+        const gCanvas = document.createElement("canvas");
+        const note = document.createElement("div");
+        note.className = "plot-note";
+        const label = document.createElement("span");
+        const scale = document.createElement("span");
+        note.append(label, scale);
+        body.append(gCanvas, note);
+        registerPlot(gCanvas, d.equation || "x^2", note);
+      },
+
+      quiz(body, action) {
+        const d = action.data || action;
+        const q = document.createElement("div");
+        q.className = "quiz-q";
+        q.textContent = d.question || "Practice question";
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = "SHOW ANSWER";
+
+        const ans = document.createElement("div");
+        ans.className = "quiz-a";
+        ans.textContent = d.answer || "";
+
+        btn.addEventListener("click", () => {
+          const visible = ans.style.display === "block";
+          ans.style.display = visible ? "none" : "block";
+          btn.textContent = visible ? "SHOW ANSWER" : "HIDE ANSWER";
+        });
+
+        body.append(q, btn, ans);
+      },
+
+      note(body, action) {
+        const d = action.data || action;
+        const n = document.createElement("div");
+        n.className = "note-text";
+        n.textContent = d.text || d.body || "";
+        body.appendChild(n);
+      },
+
+      dynamic(body, action) {
+        const d = action.data || {};
+        const listSource = Array.isArray(d.items) ? d.items : Array.isArray(d.steps) ? d.steps : null;
+        if (listSource) {
+          const ul = document.createElement("ul");
+          ul.style.paddingLeft = "16px";
+          ul.style.fontSize = "12px";
+          ul.style.lineHeight = "1.5";
+          listSource.forEach((entry) => {
+            const li = document.createElement("li");
+            li.textContent = typeof entry === "string" ? entry : JSON.stringify(entry);
+            ul.appendChild(li);
+          });
+          body.appendChild(ul);
+          return;
+        }
+
+        const pre = document.createElement("pre");
+        pre.style.whiteSpace = "pre-wrap";
+        pre.style.fontSize = "11.5px";
+        pre.style.lineHeight = "1.45";
+        pre.textContent = typeof d === "string" ? d : JSON.stringify(d, null, 2);
+        body.appendChild(pre);
+      }
+    };
+
+    function boxesOverlap(a, b, pad = 16) {
+      return (
+        a.x < b.x + b.w + pad &&
+        a.x + a.w + pad > b.x &&
+        a.y < b.y + b.h + pad &&
+        a.y + a.h + pad > b.y
+      );
+    }
+
+    // First-fit scan across the *visible* viewport first (so new blocks don't land
+    // behind the sidebar or off-screen), then the whole world. Old version only
+    // staggered by element index and happily overlapped.
+    function pickNonOverlappingPosition(preferredX, preferredY, w, h) {
+      const viewLeft = Math.max(8, -boardState.panX + 24);
+      const viewTop = Math.max(8, -boardState.panY + 24);
+      const viewRight = Math.min(WORLD_SIZE, -boardState.panX + stage.clientWidth - 24);
+      const viewBottom = Math.min(WORLD_SIZE, -boardState.panY + stage.clientHeight - 24);
+
+      const baseX = typeof preferredX === "number" ? preferredX : viewLeft;
+      const baseY = typeof preferredY === "number" ? preferredY : viewTop;
+      const stepX = w + 20;
+      const stepY = h + 20;
+      const fits = (x, y) => !boardState.elements.some((e) => boxesOverlap({ x, y, w, h }, e));
+
+      const scan = (minX, maxX, minY, maxY) => {
+        for (let y = minY; y + h <= maxY; y += stepY) {
+          for (let x = minX; x + w <= maxX; x += stepX) {
+            if (fits(x, y)) return { x, y };
+          }
+        }
+        return null;
+      };
+
+      return (
+        scan(baseX, viewRight, baseY, viewBottom) ||
+        scan(viewLeft, viewRight, viewTop, viewBottom) ||
+        scan(8, WORLD_SIZE, 8, WORLD_SIZE) || { x: baseX, y: baseY }
+      );
+    }
+
+    function spawnElement(action) {
+      const rawKind = action.kind || (action.type ? String(action.type).replace(/^add_/, "") : "note");
+      const kind = String(rawKind).toLowerCase();
+      const renderer = ELEMENT_RENDERERS[kind] || ELEMENT_RENDERERS.dynamic;
+
+      const record = {
+        id: action.id || `el_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        kind,
+        title: String(action.title || action.equation || kind.toUpperCase()).slice(0, 60),
+        x: 0,
+        y: 0
+      };
+
+      const card = document.createElement("div");
+      card.className = "card";
+      if (action.w) card.style.width = `${Math.max(180, Math.min(520, Number(action.w) || 268))}px`;
+
+      const header = document.createElement("div");
+      header.className = "card-header";
+
+      const titleSpan = document.createElement("span");
+      titleSpan.className = "card-title";
+      titleSpan.textContent = `${kind.toUpperCase()} // ${record.title}`;
+
+      const closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.className = "card-close";
+      closeBtn.title = "Remove block";
+      closeBtn.textContent = "X";
+      closeBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+      closeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        removeElement(record, card);
+      });
+
+      header.append(titleSpan, closeBtn);
+
+      const body = document.createElement("div");
+      body.className = "card-body";
+
+      card.append(header, body);
+      card.style.visibility = "hidden";
+      // mount BEFORE rendering: a canvas measures 0x0 while detached, which is
+      // what left every graph card blank
+      world.appendChild(card);
+      renderer(body, action);
+
+      const cardW = card.offsetWidth || 268;
+      const cardH = card.offsetHeight || 140;
+      const pos = pickNonOverlappingPosition(action.x, action.y, cardW, cardH);
+
+      record.x = pos.x;
+      record.y = pos.y;
+      record.w = cardW;
+      record.h = cardH;
+      record.el = card;
+
+      card.style.left = `${pos.x}px`;
+      card.style.top = `${pos.y}px`;
+      card.style.visibility = "";
+
+      makeDraggable(card, record);
+      boardState.elements.push(record);
+      updateBlockCounter();
+      return true;
+    }
+
+    function speakReply(text) {
+      if (!boardState.voiceMode || !("speechSynthesis" in window) || !text) return;
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.rate = 1.02;
+      window.speechSynthesis.speak(utter);
+    }
+
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    if (SpeechRec) {
+      recognition = new SpeechRec();
+      recognition.lang = "en-US";
+      recognition.interimResults = true;
+      recognition.continuous = true;
+
+      recognition.onresult = (event) => {
+        let interim = "";
+        let finalText = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const piece = event.results[i][0].transcript;
+          if (event.results[i].isFinal) finalText += piece;
+          else interim += piece;
+        }
+        if (interim) {
+          transcriptStrip.textContent = `LISTENING: ${interim}`;
+          transcriptStrip.classList.add("visible");
+        }
+        if (finalText.trim()) {
+          transcriptStrip.classList.remove("visible");
+          handleCommand(finalText.trim(), true);
+        }
+      };
+
+      recognition.onend = () => {
+        if (boardState.voiceMode) {
+          try { recognition.start(); } catch (_) {}
+        }
+      };
+
+      // Without this, a denied mic or a network drop becomes an infinite loop:
+      // Chrome fires error -> end -> start -> error, forever, with no feedback.
+      recognition.onerror = (event) => {
+        const fatal = ["not-allowed", "service-not-allowed", "audio-capture", "network"];
+        if (!fatal.includes(event.error)) return;
+        boardState.voiceMode = false;
+        voiceToggle.classList.remove("active-voice");
+        voiceToggle.textContent = "[V] VOICE: OFF";
+        indVoice.textContent = "OFF";
+        indVoice.classList.remove("live-voice");
+        transcriptStrip.classList.remove("visible");
+        addHistoryEntry("VOICE", `Microphone unavailable (${event.error}). Voice mode stopped.`, 0);
+      };
+    }
+
+    async function fetchRoarActions(promptText) {
+      const requestContext = {
+        block_schema: BLOCK_FRAMEWORK_SPEC,
+        current_blocks: boardState.elements.map((e) => ({
+          id: e.id,
+          kind: e.kind,
+          title: e.title,
+          x: Math.round(e.x),
+          y: Math.round(e.y)
+        })),
+        command: promptText
+      };
+
+      if (!ROAR_CONFIG.endpoint || !ROAR_CONFIG.apiKey) {
+        return {
+          reply: "Mock mode active. Add Roar AI endpoint and key to run live model actions.",
+          actions: [
+            { kind: "graph", title: "PARABOLA", x: 56, y: 56, data: { equation: "x^2 - 4*x + 3" } },
+            { kind: "quiz", title: "ROOT CHECK", x: 344, y: 56, data: { question: "Find the roots of x^2 - 4x + 3 = 0.", answer: "x = 1 and x = 3" } }
+          ]
+        };
+      }
+
+      const res = await fetch(ROAR_CONFIG.endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${ROAR_CONFIG.apiKey}`
+        },
+        body: JSON.stringify({
+          model: ROAR_CONFIG.model,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: JSON.stringify(requestContext) }
+          ]
+        })
+      });
+
+      const data = await res.json();
+      const rawContent = data?.choices?.[0]?.message?.content || "{}";
+      const cleaned = rawContent.replace(/^```json\s*|\s*```$/g, "").trim();
+      return JSON.parse(cleaned);
+    }
+
+    function applyPayload(promptText, payload, fromVoice = false) {
+      const actions = Array.isArray(payload.actions) ? payload.actions : [];
+      let created = 0;
+      actions.forEach((act) => {
+        if (spawnElement(act)) created += 1;
+      });
+      const replyText = payload.reply || "Actions applied.";
+      addHistoryEntry(promptText, replyText, created);
+      if (fromVoice || boardState.voiceMode) {
+        speakReply(replyText);
+      }
+    }
+
+    async function handleCommand(text, fromVoice = false) {
+      try {
+        const payload = await fetchRoarActions(text);
+        applyPayload(text, payload, fromVoice);
+      } catch (err) {
+        addHistoryEntry(text, `Error: ${err.message}`, 0);
+      }
+    }
+
+    promptForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const text = promptInput.value.trim();
+      if (!text) return;
+      handleCommand(text, false);
+      promptInput.value = "";
+    });
+  </script>
+</body>
+</html>
