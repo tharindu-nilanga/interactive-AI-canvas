@@ -445,10 +445,12 @@
   </aside>
 
   <script>
-    const ROAR_CONFIG = {
-      endpoint: "",
-      apiKey: "",
-      model: "gpt-4o-mini"
+    // The proxy (server.py) owns the API key and the system prompt. The browser
+    // only ever talks to same-origin /api/*, so no secret ships in this file.
+    const API_CONFIG = {
+      chat: "/api/chat",
+      health: "/api/health",
+      offlineMock: true // keep the demo alive if the proxy isn't running
     };
 
     const BLOCK_FRAMEWORK_SPEC = {
@@ -476,11 +478,9 @@
       }
     };
 
-    const SYSTEM_PROMPT = `
-You are an AI spatial study co-pilot for CANVAS.
-Respond ONLY with valid JSON matching the provided block_schema.
-Avoid overlapping existing blocks in current_blocks.
-`.trim();
+    // Live system prompt lives in server.py (SYSTEM_PROMPT) so it can be tuned
+    // without touching this file, and so it is never shipped to the browser.
+    // BLOCK_FRAMEWORK_SPEC above stays as the human-readable contract.
 
     const stage = document.getElementById("stage");
     const world = document.getElementById("world");
@@ -1058,6 +1058,8 @@ Avoid overlapping existing blocks in current_blocks.
       record.w = cardW;
       record.h = cardH;
       record.el = card;
+      // kept so the board state sent to the model includes what the block says
+      record.data = action.data && typeof action.data === "object" ? action.data : {}
 
       card.style.left = `${pos.x}px`;
       card.style.top = `${pos.y}px`;
@@ -1124,48 +1126,98 @@ Avoid overlapping existing blocks in current_blocks.
       };
     }
 
+    // Proxy call. server.py injects the key, hardens the JSON and returns
+    // { reply, actions }. If the proxy is down the board falls back to a
+    // keyword mock so a venue-network failure never leaves a blank screen.
+    const MOCK_EQUATION = "x^2 - 4*x + 3";
+
+    function mockPayload(promptText) {
+      const text = String(promptText || "").toLowerCase();
+      const actions = [];
+
+      // try to honour a requested function, else fall back to the quadratic
+      const fnMatch = String(promptText).match(/(sin|cos|tan|log|ln|sqrt|abs|exp)\s*\(\s*x\s*\)/i);
+      const polyMatch = String(promptText).match(/x\s*\^\s*\d(\s*[-+]\s*\d*\s*\*?\s*x?)*/i);
+      const equation = fnMatch ? fnMatch[0].replace(/\s+/g, "") : polyMatch ? polyMatch[0].replace(/\s+/g, "") : MOCK_EQUATION;
+
+      const looksLikeEquation = /[x]\s*(\^|\*)|\d\s*[x]\b|x\s*\+|x\s*-/.test(text);
+      if (looksLikeEquation || /graph|plot|curve|parabola|sine|function/.test(text)) {
+        actions.push({
+          kind: "graph",
+          title: "PLOT",
+          data: { equation }
+        });
+      }
+      if (/quiz|test|question|practice|check/.test(text)) {
+        actions.push({
+          kind: "quiz",
+          title: "ROOT CHECK",
+          data: { question: "Find the roots of x^2 - 4x + 3 = 0.", answer: "x = 1 and x = 3" }
+        });
+      }
+      if (/step|derive|solve|how|explain/.test(text)) {
+        actions.push({
+          kind: "steps",
+          title: "WORKING (MOCK)",
+          data: {
+            steps: [
+              "Start from ax^2 + bx + c = 0.",
+              "Here a=1, b=-4, c=3.",
+              "Factor as (x-1)(x-3) = 0.",
+              "So x = 1 or x = 3."
+            ]
+          }
+        });
+      }
+      if (!actions.length) {
+        actions.push({
+          kind: "note",
+          title: "OFFLINE",
+          data: {
+            text: `Proxy not reachable — offline mock.\n\nYour command: ${promptText}`
+          }
+        });
+      }
+      return { reply: "Offline mock: the proxy isn't running.", actions, mock: true };
+    }
+
     async function fetchRoarActions(promptText) {
-      const requestContext = {
-        block_schema: BLOCK_FRAMEWORK_SPEC,
-        current_blocks: boardState.elements.map((e) => ({
+      const request = {
+        command: promptText,
+        board: boardState.elements.map((e) => ({
           id: e.id,
           kind: e.kind,
           title: e.title,
           x: Math.round(e.x),
-          y: Math.round(e.y)
+          y: Math.round(e.y),
+          w: e.w,
+          h: e.h,
+          data: e.data || {}
         })),
-        command: promptText
+        viewport: {
+          x: Math.round(-boardState.panX),
+          y: Math.round(-boardState.panY),
+          w: stage.clientWidth,
+          h: stage.clientHeight
+        }
       };
 
-      if (!ROAR_CONFIG.endpoint || !ROAR_CONFIG.apiKey) {
-        return {
-          reply: "Mock mode active. Add Roar AI endpoint and key to run live model actions.",
-          actions: [
-            { kind: "graph", title: "PARABOLA", x: 56, y: 56, data: { equation: "x^2 - 4*x + 3" } },
-            { kind: "quiz", title: "ROOT CHECK", x: 344, y: 56, data: { question: "Find the roots of x^2 - 4x + 3 = 0.", answer: "x = 1 and x = 3" } }
-          ]
-        };
+      try {
+        const res = await fetch(API_CONFIG.chat, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request)
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || payload.error) {
+          throw new Error(payload.error || `proxy HTTP ${res.status}`);
+        }
+        return { reply: payload.reply || "", actions: Array.isArray(payload.actions) ? payload.actions : [] };
+      } catch (err) {
+        if (!API_CONFIG.offlineMock) throw err;
+        addHistoryEntry("LINK", `Proxy unavailable (${err.message}) — offline mock.`, 0);
+        return mockPayload(promptText);
       }
-
-      const res = await fetch(ROAR_CONFIG.endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${ROAR_CONFIG.apiKey}`
-        },
-        body: JSON.stringify({
-          model: ROAR_CONFIG.model,
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: JSON.stringify(requestContext) }
-          ]
-        })
-      });
-
-      const data = await res.json();
-      const rawContent = data?.choices?.[0]?.message?.content || "{}";
-      const cleaned = rawContent.replace(/^```json\s*|\s*```$/g, "").trim();
-      return JSON.parse(cleaned);
     }
 
     function applyPayload(promptText, payload, fromVoice = false) {
@@ -1181,12 +1233,27 @@ Avoid overlapping existing blocks in current_blocks.
       }
     }
 
+    let commandInFlight = false;
+
     async function handleCommand(text, fromVoice = false) {
+      if (commandInFlight) return; // ignore double submits / overlapping voice turns
+      commandInFlight = true;
+      const sendBtn = promptForm.querySelector("button[type='submit']");
+      if (sendBtn) {
+        sendBtn.disabled = true;
+        sendBtn.textContent = "...";
+      }
       try {
         const payload = await fetchRoarActions(text);
         applyPayload(text, payload, fromVoice);
       } catch (err) {
         addHistoryEntry(text, `Error: ${err.message}`, 0);
+      } finally {
+        commandInFlight = false;
+        if (sendBtn) {
+          sendBtn.disabled = false;
+          sendBtn.textContent = "SEND";
+        }
       }
     }
 
@@ -1197,6 +1264,18 @@ Avoid overlapping existing blocks in current_blocks.
       handleCommand(text, false);
       promptInput.value = "";
     });
+
+    // Surface the proxy mode on load: judges (and you) can see live vs mock instantly.
+    (async () => {
+      try {
+        const res = await fetch(API_CONFIG.health, { cache: "no-store" });
+        const info = await res.json();
+        const mode = info.mode === "live" ? `LIVE // ${info.model}` : "MOCK // no server key";
+        addHistoryEntry("LINK", `Proxy ${mode}`, 0);
+      } catch (_) {
+        addHistoryEntry("LINK", "Proxy not running. Start it: python3 server.py", 0);
+      }
+    })();
   </script>
 </body>
 </html>

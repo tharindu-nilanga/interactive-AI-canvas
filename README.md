@@ -8,12 +8,22 @@ Single file, no build step: `index.html`.
 ## Run
 
 ```bash
-python3 -m http.server 8000
-# open http://localhost:8000
+cp .env.example .env      # then paste ROAR_API_KEY into .env
+python3 server.py         # http://localhost:8000
 ```
 
-Serve over `http://localhost` rather than opening the file directly — a `file://` page sends
-`Origin: null`, which most model APIs reject via CORS, and it keeps mic permissions predictable.
+`server.py` is a stdlib-only proxy: it serves this page, holds the API key server-side, calls
+Roar AI (OpenAI-compatible: `https://api.roar-ai.com/v1/chat/completions`), and sanitises the
+model's JSON before it reaches the browser. No `npm install`, no venv.
+
+Without a key the server runs a keyword mock, and if the proxy is down entirely the page falls
+back to a client-side mock — the demo never shows a blank board.
+
+```bash
+python3 stub_upstream.py 8100                      # fake upstream that returns messy JSON
+ROAR_ENDPOINT=http://127.0.0.1:8100/v1/chat/completions \
+ROAR_API_KEY=test PORT=8010 python3 server.py      # exercise the repair path
+```
 
 ## Controls
 
@@ -57,10 +67,28 @@ and it becomes available to the model immediately.
 - **Ink** is a 4000×4000 canvas anchored to world coordinates, drawn under the cards (z-index 5) so
   blocks stay clickable with the pen armed.
 
+## Request flow
+
+```
+browser ──POST /api/chat {command, board, viewport}──▶ server.py
+                                                       │ injects system prompt + key
+                                                       ▼
+                                                   Roar AI (OpenAI-compatible)
+                                                       │
+          hardened {reply, actions} ◀──────────────────┘  strip fence → balance braces
+                                                          → trailing-comma repair
+                                                          → one strict repair call
+                                                          → whitelist/coerce actions
+```
+
+What the proxy refuses to pass through: unknown `kind`s are coerced to `note`, non-string titles are
+stringified and truncated, unparseable coordinates are dropped and out-of-range ones clamped,
+`graph` actions without an equation are discarded, more than 8 actions are dropped, and the reply is
+capped at 400 chars. Static serving is whitelisted to front-end extensions, so `.env`, `server.py`
+and `.git/` are not reachable over HTTP.
+
 ## Known gaps
 
-- No backend yet: `ROAR_CONFIG` is empty and the mock returns a fixed parabola + quiz. A proxy that
-  injects the API key server-side is required before going live.
-- The model receives `id/kind/title/x/y` only — no block text and no ink image, so it cannot reason
-  about what is actually on the board.
-- No persistence (localStorage), no undo, no wheel zoom, no JSON repair for malformed model output.
+- The model receives block text plus world coordinates, but **not the ink** — freehand annotations
+  are still invisible to it (a downscaled PNG of the pen layer would fix that).
+- No persistence (localStorage), no undo, no wheel zoom.
