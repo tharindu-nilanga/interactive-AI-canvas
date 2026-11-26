@@ -56,50 +56,168 @@ def load_env(path):
 
 load_env(os.path.join(ROOT, ".env"))
 
-ENDPOINT = os.environ.get("ROAR_ENDPOINT", "https://api.roar-ai.com/v1/chat/completions")
+# Hosted on Roar AI, the app gets ROAR_API_KEY and ROAR_BASE_URL (already ends in /v1)
+# injected — no key to add. Locally, .env supplies both.
+BASE_URL = os.environ.get("ROAR_BASE_URL", "").rstrip("/")
+ENDPOINT = os.environ.get("ROAR_ENDPOINT") or (
+    f"{BASE_URL}/chat/completions" if BASE_URL else "https://api.roar-ai.com/v1/chat/completions"
+)
 API_KEY = os.environ.get("ROAR_API_KEY", "").strip()
 MODEL = os.environ.get("ROAR_MODEL", "gpt-4o-mini").strip()
 TIMEOUT = float(os.environ.get("ROAR_TIMEOUT", "45"))
 TEMPERATURE = float(os.environ.get("ROAR_TEMPERATURE", "0.4"))
 FORCE_MOCK = os.environ.get("MOCK", "").strip() in {"1", "true", "yes"}
 PORT = int(os.environ.get("PORT", "8000"))
+# a hosted app must accept traffic from the platform's proxy, not just localhost
+HOST = os.environ.get("HOST") or ("0.0.0.0" if BASE_URL or os.environ.get("APP_URL") else "127.0.0.1")
 LIVE = bool(API_KEY and ENDPOINT) and not FORCE_MOCK
 
 
-SYSTEM_PROMPT = """You are the AI co-pilot of CANVAS, a spatial study board used by a student.
-The student sees a pannable 2D world (0..4000 on both axes) containing interactive blocks.
+# --------------------------------------------------------------------------- #
+# Prompt
+# --------------------------------------------------------------------------- #
+# One entry per kind the board can draw: (what it is, example payload, when to use it).
+# The client sends the list of kinds it can actually render, so this guide is never
+# advertising a widget the page cannot draw.
+KIND_DOCS = {
+    "graph": (
+        "plots one function of x onto a canvas",
+        '{"equation": "x^2 - 4*x + 3"}',
+        "a shape, a slope, roots or an intersection. One curve per card.",
+    ),
+    "quiz": (
+        "an answerable question, graded in the browser",
+        '{"question": "...", "answer": "...", "choices": ["...", "..."]}',
+        "checking understanding right after teaching something. `answer` must be short and "
+        "exactly matchable (\"3x^2\", \"x = 1 and x = 3\", \"even\"); add `choices` when the "
+        "answer is one of a few options.",
+    ),
+    "note": (
+        "one short takeaway",
+        '{"text": "..."}',
+        "a single sentence or two (under ~40 words) that must be visible at a glance.",
+    ),
+    "card": (
+        "free-form markdown: headings, lists, tables, code, quotes",
+        '{"body": "## Heading\\n\\n- point\\n- point\\n\\n| a | b |\\n|---|---|\\n| 1 | 2 |"}',
+        "explanations, worked examples, summaries — anything longer than a note. This is "
+        "the richest kind; use it whenever a widget above does not fit.",
+    ),
+    "steps": (
+        "a numbered derivation",
+        '{"steps": ["start from ...", "then ...", "so ..."]}',
+        "derivations the student follows line by line (3-6 steps, one operation each).",
+    ),
+    "table": (
+        "a comparison with headers and rows",
+        '{"headers": ["f", "parity", "period"], "rows": [["sin", "odd", "2pi"]]}',
+        "comparing two or more things across two or more attributes.",
+    ),
+    "checklist": (
+        "tickable items",
+        '{"items": ["revise ...", "practise ..."]}',
+        "a revision plan, a procedure to follow, or to-dos.",
+    ),
+    "formula": (
+        "one highlighted expression",
+        '{"expression": "x = (-b sqrt(b^2-4ac)) / 2a", "note": "quadratic formula"}',
+        "pinning a single formula the student must remember.",
+    ),
+    "grid": (
+        "a 2D matrix of cells (sudoku, truth table, matrix, pixel pattern)",
+        '{"rows": ["53.7.....", "6..195..."], "note": "1-9 once per row, column and box"}',
+        "anything genuinely two-dimensional. Rows may be equal-length strings or arrays.",
+    ),
+}
 
-Reply with ONE JSON object and nothing else. No prose, no markdown, no code fences.
+PROMPT_TEMPLATE = """You are the AI co-pilot of CANVAS, a spatial study board used by one student.
+You answer by placing interactive blocks on a pannable 2D board.
+
+Reply with ONE JSON object and nothing else. No prose, no markdown fence around it.
 
 {
-  "reply": "one or two conversational sentences to show in the sidebar",
+  "reply": "one or two conversational sentences for the sidebar",
   "actions": [
     {
-      "kind": "graph" | "quiz" | "note" | "<custom_snake_case_kind>",
-      "title": "short block header, max 6 words",
-      "x": 56, "y": 56, "w": 268,
+      "kind": "__KINDS__",
+      "title": "short header, 2-5 words, no kind name",
+      "place": "right" | "below" | "new-row",
       "data": {}
-    }
+    },
+    { "op": "delete", "id": "el_123" }
   ]
 }
 
-Registered kinds and their data:
-- graph: { "equation": "x^2 - 4*x + 3" }   (one variable, x. Use * for multiply, ^ for power,
-           sqrt/sin/cos/tan/ln/log/abs/exp allowed, pi and e allowed. No 'y=' prefix.)
-- quiz:  { "question": "...", "answer": "..." }
-- note:  { "text": "..." }
+`actions` may mix new blocks and operations on existing ones — see CHANGING WHAT IS ALREADY ON
+THE BOARD below. A block that only describes a change is a bug: if the student says "remove X",
+emit the delete op, do not make a card saying X was removed.
 
-For anything else invent a concise snake_case kind and put the content in data.items (array of
-strings) or data.steps, or plain key/value fields. The board renders unknown kinds as a formatted
-list, so structured lists look better than prose blobs.
+LAYOUT is automatic: the board packs your blocks into equal-width columns with even gaps,
+starting at the top-left of the student's current view, in the order you list them. Do NOT
+compute pixel coordinates. "place" is an optional hint relative to the previous block: "below"
+stacks a quiz under its graph, "right" sits beside it, "new-row" starts a fresh line.
 
-Rules:
-- Prefer 1-4 actions. Never repeat a block that is already on the board with the same content.
-- Place new blocks near the viewport given below, leaving a ~20px gap: x and y are world
-  coordinates, blocks are ~268 wide and ~140-200 tall. Do not overlap current_blocks.
-- Keep reply short: it may be spoken aloud.
-- If the student's request is a question with no board change, use "actions": [].
+CHANGING WHAT IS ALREADY ON THE BOARD
+An action may also operate on existing blocks. Target them with the "id" from current_blocks
+(a "title" fallback works for delete and move):
+  {"op": "delete", "id": "el_123"}                                   remove one block
+  {"op": "update", "id": "el_123", "title": "new", "data": {...}}     rewrite a block in place
+  {"op": "move",   "id": "el_123", "x": 120, "y": 80}                 reposition it
+  {"op": "clear"}                                                    remove every block
+  {"op": "spawn", "kind": "...", "title": "...", "data": {}}          same as omitting "op"
+Rules: never delete, clear or move something the student did not ask to change. Prefer "update"
+over delete+spawn when correcting or extending an existing block. If they got a quiz wrong, do not
+erase the attempt — update the quiz to something easier, or spawn a card/steps block that explains
+the step they missed.
+
+WHAT THE STUDENT JUST DID
+The request carries recent_events: quiz_wrong / quiz_correct / quiz_revealed / checklist_toggle /
+block_closed, with block ids and the answers they gave. Use them when the student says "this",
+"that one", "what did I miss", or asks for a hint. Never read them back as a system log.
+
+KINDS YOU CAN EMIT
+__KIND_GUIDE__
+- any other concise snake_case kind: it renders as a list (data.items / data.steps) or a
+  key/value card, so put structured fields in data rather than one prose blob. Inventing a
+  kind is allowed, but a registered kind almost always looks better.
+
+HOW TO COMPOSE
+- A teaching answer is a cluster, not a pile: usually 1 explanation (card or note) + 1 concrete
+  artefact (graph, table, grid, formula) + 1 quiz. Two or three blocks beat four.
+- Vary the kinds. Four notes in a row is a bad answer; a graph, a formula and a quiz is a good one.
+- If the student asks for a game, puzzle or interactive thing, use the kind that actually renders
+  it (grid for a sudoku, checklist for steps, quiz for a guess-and-check) instead of describing it.
+- Put the main artefact first, supporting text after it.
+- Never repeat a block that is already on the board with the same content.
+- When the student asks a pure question with nothing to show, use "actions": [].
+
+CONTENT
+- reply: 1-2 sentences, plain text (it may be spoken aloud), no markdown, no lists.
+- Be concrete: real numbers, real steps, real equations — not "you could plot the function".
+- In graph equations use * between terms (4*x, not 4x), ^ for powers, and x as the only variable.
+- Keep each block self-contained: a student should understand it without the reply.
+- If the board already holds related blocks, build on them instead of restarting the topic.
 """
+
+
+def build_system_prompt(kinds=None):
+    """Compose the prompt from the kinds this client can actually render."""
+    requested = {k for k in (kinds or []) if isinstance(k, str)}
+    available = [k for k in KIND_DOCS if not requested or k in requested]
+    if not available:
+        available = list(KIND_DOCS)
+
+    guide = "\n".join(
+        f'- {kind}: {KIND_DOCS[kind][1]}\n    {KIND_DOCS[kind][0]}. Use for: {KIND_DOCS[kind][2]}'
+        for kind in available
+    )
+    return (
+        PROMPT_TEMPLATE.replace("__KIND_GUIDE__", guide)
+        .replace("__KINDS__", " | ".join(available + ["<snake_case_kind>"]))
+    )
+
+
+SYSTEM_PROMPT = build_system_prompt()
 
 
 # --------------------------------------------------------------------------- #
@@ -217,6 +335,55 @@ def sanitize_payload(payload):
         if not isinstance(raw, dict):
             continue
 
+        # panel mutations: {op: delete|clear|update|move, id|title, ...}
+        op = s(raw.get("op"), 12).lower()
+        if op in {"delete", "remove", "clear", "update", "move"}:
+            op = "delete" if op == "remove" else op
+            item: dict = {"op": op}
+            ident = s(raw.get("id"), 48)
+            if ident:
+                item["id"] = ident
+
+            if op in {"delete", "move"}:
+                # a title is a fallback way to point at a block
+                if not ident:
+                    title = s(raw.get("title"), 60)
+                    if not title:
+                        continue
+                    item["title"] = title
+            elif op == "update":
+                if not ident:
+                    continue  # updating without an id is ambiguous
+                data = raw.get("data")
+                if isinstance(data, dict):
+                    item["data"] = {
+                        str(k)[:32]: s(v, 800) if isinstance(v, str) else v
+                        for k, v in list(data.items())[:12]
+                    }
+                kind = s(raw.get("kind"), 24).lower()
+                if KIND_RE.match(kind):
+                    item["kind"] = kind
+                title = s(raw.get("title"), 60)
+                if title:
+                    item["title"] = title
+                for key in ("w", "h"):
+                    size = clamp_int(raw.get(key), 140, 760)
+                    if size is not None:
+                        item[key] = size
+                if len(item) == 1:
+                    continue  # nothing to change
+
+            if op == "move":
+                for axis in ("x", "y"):
+                    pos = clamp_int(raw.get(axis), 0, WORLD_SIZE)
+                    if pos is not None:
+                        item[axis] = pos
+                if not ({item.get("x"), item.get("y")} - {None}):
+                    continue
+
+            clean.append(item)
+            continue
+
         kind = s(raw.get("kind") or raw.get("type") or "note", 24).lower()
         kind = re.sub(r"^add_", "", kind).replace(" ", "_")
         kind = re.sub(r"[^a-z0-9_\-]", "", kind)  # "QUIZ!!" -> "quiz"
@@ -269,6 +436,15 @@ def sanitize_payload(payload):
             "title": s(raw.get("title") or title_default, 60) or kind.upper(),
             "data": data,
         }
+
+        # layout hints: the client arranges blocks, so pass structure through
+        place = s(raw.get("place"), 12).lower()
+        if place in {"right", "below", "new-row", "left", "auto"}:
+            item["place"] = place
+        col = clamp_int(raw.get("col"), 0, 3)
+        if col is not None:
+            item["col"] = col
+
         for axis in ("x", "y"):
             pos = clamp_int(raw.get(axis), 0, WORLD_SIZE)
             if pos is not None:
@@ -318,8 +494,59 @@ def viewport_summary(viewport):
     return " ".join(parts)
 
 
-def build_user_message(command, board, viewport):
-    return json.dumps(
+def sanitize_events(events):
+    """What the student just did on the board, trimmed to the fields that matter."""
+    out = []
+    if not isinstance(events, list):
+        return out
+    for event in events[-12:]:
+        if not isinstance(event, dict):
+            continue
+        entry: dict = {"type": s(event.get("type"), 24)}
+        for key in ("id", "title", "item", "question", "given", "expected"):
+            if key in event:
+                entry[key] = s(event.get(key), 120)
+        if "correct" in event:
+            entry["correct"] = bool(event.get("correct"))
+        if "checked" in event:
+            entry["checked"] = bool(event.get("checked"))
+        out.append(entry)
+    return out
+
+
+def describe_events(events):
+    """Plain-language activity lines placed above the JSON payload.
+
+    Nested JSON gets skipped by models; a short sentence does not. This is the
+    difference between "I can't see what you missed" and an actual follow-up.
+    """
+    clean = sanitize_events(events)
+    if not clean:
+        return ""
+    lines = []
+    for ev in clean:
+        kind = ev.get("type", "")
+        block = ev.get("id") or ev.get("title") or "a block"
+        if kind in {"quiz_wrong", "quiz_correct"}:
+            verdict = "correct" if ev.get("correct") else "wrong"
+            lines.append(
+                f'- quiz {verdict}: the student answered "{ev.get("given", "?")}" to '
+                f'"{ev.get("question", "?")}" on block {block} (expected "{ev.get("expected", "?")}")'
+            )
+        elif kind == "quiz_revealed":
+            lines.append(f'- they pressed reveal on block {block} ("{ev.get("question", "?")}")')
+        elif kind == "checklist_toggle":
+            state = "ticked" if ev.get("checked") else "un-ticked"
+            lines.append(f'- they {state} "{ev.get("item", "?")}" on block {block}')
+        elif kind == "block_closed":
+            lines.append(f'- they closed the block "{ev.get("title", "?")}"')
+        else:
+            lines.append(f"- {kind} on {block}")
+    return "What the student just did on the board (most recent last):\n" + "\n".join(lines)
+
+
+def build_user_message(command, board, viewport, events=None):
+    payload = json.dumps(
         {
             "command": s(command, 1500),
             "viewport": viewport_summary(viewport),
@@ -327,6 +554,8 @@ def build_user_message(command, board, viewport):
         },
         ensure_ascii=False,
     )
+    activity = describe_events(events)
+    return f"{activity}\n\n{payload}" if activity else payload
 
 
 def call_upstream(messages):
@@ -389,12 +618,17 @@ def extract_content(data):
     raise RuntimeError("upstream response had no message content")
 
 
-def ask_model(command, board, viewport):
+LAST_REQUEST: dict = {}
+
+
+def ask_model(command, board, viewport, kinds=None, events=None):
     """One call; if the JSON is unusable, one strict repair call. Returns sanitized dict."""
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": build_user_message(command, board, viewport)},
+        {"role": "system", "content": build_system_prompt(kinds)},
+        {"role": "user", "content": build_user_message(command, board, viewport, events)},
     ]
+    LAST_REQUEST.clear()
+    LAST_REQUEST.update({"system": messages[0]["content"], "user": messages[1]["content"]})
     content = call_upstream(messages)
     payload = parse_model_json(content)
 
@@ -426,8 +660,21 @@ def mock_payload(command, board):
     reply = f'Mock co-pilot: understood "{s(command, 80)}".'
     actions = []
 
+    # the mock can clear the board too, so the op path is demoable offline
+    if re.search(r"\b(clear|wipe|empty|reset)\b.*\b(board|blocks?|canvas|everything)\b", text):
+        return {
+            "reply": "Mock mode: clearing the board.",
+            "actions": [{"op": "clear"}],
+            "mock": True,
+        }
+
     equation = None
-    fn_match = re.search(r"(sin|cos|tan|log|ln|sqrt|abs|exp)\s*\(\s*x\s*\)", command or "", re.I)
+    fn_match = re.search(
+        r"(sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|sqrt|cbrt|abs|exp|ln|log10|log|floor|ceil|round|sign)"
+        r"\s*\(\s*x\s*\)",
+        command or "",
+        re.I,
+    )
     poly_match = re.search(r"x\s*\^\s*\d(\s*[-+]\s*\d*\s*\*?\s*x?)*", command or "", re.I)
     if fn_match:
         equation = re.sub(r"\s+", "", fn_match.group(0))
@@ -556,8 +803,19 @@ class Handler(BaseHTTPRequestHandler):
                     "mode": "live" if LIVE else "mock",
                     "endpoint": ENDPOINT,
                     "model": MODEL,
+                    "kinds": list(KIND_DOCS),
                 },
             )
+            return
+
+        # inspect exactly what the model is told (no key, no secrets in here)
+        if path == "/api/prompt":
+            self.send_json(200, {"prompt": build_system_prompt()})
+            return
+
+        # what the last request actually sent (system + user), for debugging
+        if path == "/api/last":
+            self.send_json(200, LAST_REQUEST or {"error": "no request yet"})
             return
 
         if path == "/":
@@ -603,6 +861,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         board = body.get("board")
         viewport = body.get("viewport")
+        capabilities = body.get("capabilities") if isinstance(body.get("capabilities"), dict) else {}
+        kinds = capabilities.get("kinds") if isinstance(capabilities.get("kinds"), list) else None
+        events = body.get("recent_events")
 
         if not LIVE:
             payload = mock_payload(command, board)
@@ -611,13 +872,17 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         try:
-            payload = ask_model(command, board, viewport)
+            payload = ask_model(command, board, viewport, kinds, events)
         except Exception as exc:  # noqa: BLE001 - surface everything to the client
             sys.stderr.write(f"[canvas] model error: {exc}\n")
             self.send_json(502, {"error": f"{exc}"})
             return
 
         payload["latency_ms"] = int((time.time() - started) * 1000)
+        sys.stderr.write(
+            "[canvas] chat: %d action(s), %d event(s), %dms\n"
+            % (len(payload.get("actions", [])), len(sanitize_events(events)), payload["latency_ms"])
+        )
         self.send_json(200, payload)
 
 
@@ -627,8 +892,8 @@ def main():
     print(f"[canvas] upstream={ENDPOINT}", flush=True)
     if not LIVE:
         print("[canvas] no ROAR_API_KEY -> keyword mock. Put the key in .env to go live.", flush=True)
-    print(f"[canvas] http://localhost:{PORT}", flush=True)
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    print(f"[canvas] listening on {HOST}:{PORT}", flush=True)
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":

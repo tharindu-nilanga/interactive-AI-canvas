@@ -49,8 +49,17 @@
       cursor: grab;
     }
 
+    .stage-wrap.pan-off {
+      cursor: default;
+    }
+
     .stage-wrap.panning {
       cursor: grabbing;
+    }
+
+    .stage-wrap.panning,
+    .stage-wrap.pen-mode {
+      user-select: none;
     }
 
     .world {
@@ -73,14 +82,11 @@
       inset: 0;
       width: 100%;
       height: 100%;
-      pointer-events: none;
+      pointer-events: none; /* ink never eats a click; pen input is handled on the stage */
       z-index: 5;
     }
 
-    /* Ink stays below the cards (z-index 5). At z-25 this overlay sat above every
-       block, so with the pen armed you could not click a quiz answer or drag. */
-    #pen-layer.drawing {
-      pointer-events: auto;
+    .stage-wrap.pen-mode {
       cursor: crosshair;
     }
 
@@ -91,6 +97,11 @@
       border: 1px solid var(--border-strong);
       box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.55);
       z-index: 10;
+      display: flex;
+      flex-direction: column;
+      min-height: 96px;
+      min-width: 200px;
+      cursor: default;
     }
 
     .card-header {
@@ -98,6 +109,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 8px;
+      flex: 0 0 auto;
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.08em;
@@ -115,9 +127,21 @@
     }
 
     .card-title {
+      flex: 1 1 auto;
+      min-width: 0;
+      color: var(--text);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .card-kind {
+      flex: 0 0 auto;
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      border-right: 1px solid var(--border);
+      padding-right: 7px;
     }
 
     .card-close {
@@ -139,6 +163,241 @@
 
     .card-body {
       padding: 10px;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* bottom-right resize grip */
+    .card-resize {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 16px;
+      height: 16px;
+      cursor: nwse-resize;
+      touch-action: none;
+      z-index: 3;
+      background-image:
+        linear-gradient(135deg, transparent 0 55%, var(--border-strong) 55% 66%, transparent 66%),
+        linear-gradient(135deg, transparent 0 78%, var(--border-strong) 78% 88%, transparent 88%);
+    }
+
+    .card-resize:hover {
+      background-image:
+        linear-gradient(135deg, transparent 0 55%, var(--accent) 55% 66%, transparent 66%),
+        linear-gradient(135deg, transparent 0 78%, var(--accent) 78% 88%, transparent 88%);
+    }
+
+    /* quiz answering */
+    .quiz-input-shell {
+      display: flex;
+      gap: 6px;
+      align-items: stretch;
+      margin-top: 8px;
+    }
+
+    .quiz-input-shell input {
+      flex: 1;
+      min-width: 0;
+      font-family: var(--mono);
+      font-size: 12px;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      padding: 5px 7px;
+      outline: none;
+    }
+
+    .quiz-input-shell input:focus {
+      border-color: var(--accent);
+    }
+
+    .quiz-choices {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-top: 8px;
+    }
+
+    .quiz-choice {
+      text-align: left;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 12px;
+      padding: 6px 8px;
+    }
+
+    .quiz-choice.ok {
+      border-color: #1f4638;
+      background: #0e1c17;
+      color: var(--ok);
+    }
+
+    .quiz-choice.bad {
+      border-color: #7f1d1d;
+      background: #2a1418;
+      color: #fca5a5;
+    }
+
+    .quiz-feedback {
+      display: none;
+      font-size: 11.5px;
+      line-height: 1.4;
+      margin-top: 7px;
+      padding: 6px 8px;
+      border: 1px solid transparent;
+      white-space: pre-wrap;
+    }
+
+    .quiz-feedback.ok {
+      display: block;
+      color: var(--ok);
+      background: #0e1c17;
+      border-color: #1f4638;
+    }
+
+    .quiz-feedback.bad {
+      display: block;
+      color: #fca5a5;
+      background: #2a1418;
+      border-color: #7f1d1d;
+    }
+
+    .card.quiz-solved {
+      border-color: #1f4638;
+    }
+
+    /* generic block content (any kind the model invents) */
+    .block-list {
+      padding-left: 18px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .block-list li + li {
+      margin-top: 4px;
+    }
+
+    .block-kv {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 12px;
+    }
+
+    .block-kv > div {
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+    }
+
+    .kv-key {
+      flex: 0 0 34%;
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .kv-val {
+      flex: 1;
+      min-width: 0;
+      word-break: break-word;
+      line-height: 1.4;
+    }
+
+    .block-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11.5px;
+    }
+
+    .block-table th,
+    .block-table td {
+      border: 1px solid var(--border);
+      padding: 4px 6px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .block-table th {
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* matrix / sudoku grid */
+    .block-grid {
+      border-collapse: collapse;
+      margin: 0 auto;
+      font-size: 13px;
+      letter-spacing: 0.06em;
+    }
+
+    .block-grid td {
+      width: 26px;
+      height: 26px;
+      text-align: center;
+      vertical-align: middle;
+      border: 1px solid var(--border-strong);
+      color: var(--text);
+    }
+
+    .block-grid td.empty {
+      color: #46506a;
+    }
+
+    /* body children must never be squeezed: a flex column with auto height was
+       clipping the last row of a list */
+    .card-body > * {
+      flex: 0 0 auto;
+    }
+
+    .block-checklist {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    /* beats the generic ".card-body > ul" indent further down */
+    .card-body > ul.block-checklist {
+      padding-left: 0;
+      margin-bottom: 0;
+    }
+
+    .block-checklist label {
+      display: flex;
+      gap: 7px;
+      align-items: flex-start;
+      cursor: pointer;
+    }
+
+    .block-checklist input {
+      margin-top: 2px;
+      accent-color: var(--accent);
+    }
+
+    .block-formula {
+      font-size: 14px;
+      color: #93c5fd;
+      padding: 10px 8px;
+      text-align: center;
+      border: 1px dashed var(--border-strong);
+      background: var(--bg);
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
     }
 
     .plot-note {
@@ -161,9 +420,12 @@
     .card canvas {
       width: 100%;
       height: 124px;
+      flex: 1 1 auto;
+      min-height: 80px;
       background: var(--bg);
       border: 1px solid var(--border);
       display: block;
+      margin-bottom: 5px;
     }
 
     .note-text,
@@ -171,7 +433,82 @@
       font-size: 12.5px;
       line-height: 1.45;
       margin-bottom: 10px;
+      white-space: normal;
+    }
+
+    .quiz-q {
       white-space: pre-wrap;
+    }
+
+    /* markdown blocks (free-form cards and notes) */
+    .md-h {
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text);
+      margin: 10px 0 6px;
+    }
+
+    .note-text > .md-h:first-child,
+    .card-body > .md-h:first-child {
+      margin-top: 0;
+    }
+
+    .md-p {
+      font-size: 12.5px;
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+
+    .md-p:last-child {
+      margin-bottom: 0;
+    }
+
+    .md-pre {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 7px 8px;
+      font-size: 11px;
+      line-height: 1.45;
+      overflow-x: auto;
+      white-space: pre;
+      margin-bottom: 8px;
+    }
+
+    .md-quote {
+      border-left: 2px solid var(--border-strong);
+      padding-left: 8px;
+      color: var(--muted);
+      font-style: italic;
+      margin-bottom: 8px;
+    }
+
+    .note-text code,
+    .md-p code,
+    .block-list code {
+      background: #0f1319;
+      border: 1px solid var(--border);
+      padding: 0 3px;
+      font-size: 11px;
+    }
+
+    .note-text a,
+    .md-p a {
+      color: #93c5fd;
+    }
+
+    .note-text ul,
+    .note-text ol,
+    .card-body > ul,
+    .card-body > ol {
+      padding-left: 18px;
+      margin-bottom: 8px;
+    }
+
+    .card-body hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 8px 0;
     }
 
     .quiz-a {
@@ -288,6 +625,18 @@
       grid-column: 1 / -1;
     }
 
+    .toolbar button.danger:hover:not(:disabled) {
+      border-color: #7f1d1d;
+      color: #fca5a5;
+      background: #2a1418;
+    }
+
+    .toolbar button:disabled {
+      opacity: 0.4;
+      cursor: default;
+      filter: none;
+    }
+
     .shortcut-hint {
       font-size: 10px;
       color: var(--muted);
@@ -388,9 +737,10 @@
 </head>
 <body>
   <div class="stage-wrap" id="stage">
-    <div class="world" id="world">
-      <canvas id="pen-layer"></canvas>
-    </div>
+    <div class="world" id="world"></div>
+    <!-- ink lives in the viewport, not the world: no giant bitmap, and the board
+         can grow without ever growing this canvas -->
+    <canvas id="pen-layer"></canvas>
   </div>
 
   <aside class="sidebar">
@@ -416,6 +766,9 @@
         <button id="voice-toggle" class="secondary" type="button">[V] VOICE: OFF</button>
         <button id="clear-pen" class="secondary" type="button">[C] CLEAR INK</button>
         <button id="reset-pan" class="secondary span-2" type="button">[R] RESET PAN (0, 0)</button>
+        <button id="clear-blocks" class="secondary danger span-2" type="button" disabled>
+          CLEAR ALL BLOCKS
+        </button>
       </div>
       <div class="shortcut-hint">KEYS: H=PAN | P=PEN | V=VOICE | C=CLEAR | R=RESET | /=PROMPT</div>
     </div>
@@ -453,34 +806,15 @@
       offlineMock: true // keep the demo alive if the proxy isn't running
     };
 
-    const BLOCK_FRAMEWORK_SPEC = {
-      response_shape: {
-        reply: "string",
-        actions: [
-          {
-            id: "optional string",
-            kind: "graph | quiz | note | <custom_kind>",
-            title: "string",
-            x: "number (world x)",
-            y: "number (world y)",
-            w: "number (optional width, default 268)",
-            data: "object"
-          }
-        ]
-      },
-      registered_kinds: {
-        graph: { data: { equation: "string, e.g. 'x^2 - 4*x + 3'" } },
-        quiz: { data: { question: "string", answer: "string" } },
-        note: { data: { text: "string" } }
-      },
-      custom_kind_fallback: {
-        description: "If no registered kind fits, invent a concise snake_case kind and put structured lists in data.items or data.steps, or key/value fields in data."
-      }
-    };
+    // What this page can actually draw. The proxy builds its prompt from this list,
+    // so a renderer added below reaches the model without editing the server.
+    // There is deliberately no second copy of the block schema in this file: one
+    // source of truth per side, or the two drift and cards render empty.
+    function rendererKinds() {
+      return Object.keys(ELEMENT_RENDERERS).filter((kind) => kind !== "dynamic");
+    }
 
-    // Live system prompt lives in server.py (SYSTEM_PROMPT) so it can be tuned
-    // without touching this file, and so it is never shipped to the browser.
-    // BLOCK_FRAMEWORK_SPEC above stays as the human-readable contract.
+    // The prompt itself is built in server.py — GET /api/prompt shows it.
 
     const stage = document.getElementById("stage");
     const world = document.getElementById("world");
@@ -490,6 +824,7 @@
     const penToggle = document.getElementById("pen-toggle");
     const voiceToggle = document.getElementById("voice-toggle");
     const clearPenBtn = document.getElementById("clear-pen");
+    const clearBlocksBtn = document.getElementById("clear-blocks");
     const resetPanBtn = document.getElementById("reset-pan");
     const indPen = document.getElementById("ind-pen");
     const indVoice = document.getElementById("ind-voice");
@@ -499,10 +834,17 @@
     const promptForm = document.getElementById("prompt-form");
     const promptInput = document.getElementById("prompt-input");
 
-    const WORLD_SIZE = 4000;
+    // The board starts at 4000² and grows as blocks land near the edge, so you never
+    // hit a wall mid-session. Ink is not stored here: strokes are, in world units.
+    const WORLD_MIN = 4000;
+    const WORLD_MAX = 16000;
+    let worldW = WORLD_MIN;
+    let worldH = WORLD_MIN;
 
     const boardState = {
       elements: [],
+      events: [],   // semantic things the student did (drained into the next request)
+      removed: [],  // detached cards, so a wrongful delete can be undone
       panX: 0,
       panY: 0,
       panMode: true,
@@ -515,6 +857,7 @@
 
     function applyPanTransform() {
       world.style.transform = `translate3d(${boardState.panX}px, ${boardState.panY}px, 0)`;
+      redrawInk();
     }
 
     function resetPanToOrigin() {
@@ -524,23 +867,260 @@
       addHistoryEntry("PAN RESET", "View snapped back to origin (0, 0).", 0);
     }
 
-    function initPenCanvas() {
-      penCanvas.width = WORLD_SIZE;
-      penCanvas.height = WORLD_SIZE;
+    // ---- ink -------------------------------------------------------------
+    // Strokes are kept in world coordinates and replayed onto a viewport-sized
+    // canvas, so ink survives panning, window resizing and a growing board.
+    const inkStrokes = [];
+    let activeStroke = null;
+
+    function penStyle() {
       penCtx.strokeStyle = "#f59e0b";
       penCtx.lineWidth = 2;
       penCtx.lineCap = "square";
+      penCtx.lineJoin = "round";
+    }
+
+    function applyInkTransform() {
+      const dpr = window.devicePixelRatio || 1;
+      penCtx.setTransform(dpr, 0, 0, dpr, boardState.panX * dpr, boardState.panY * dpr);
+    }
+
+    function drawStroke(stroke) {
+      const points = stroke && stroke.points;
+      if (!points || !points.length) return;
+      penCtx.beginPath();
+      penCtx.moveTo(points[0].x, points[0].y);
+      if (points.length === 1) {
+        penCtx.lineTo(points[0].x + 0.1, points[0].y + 0.1);
+      } else {
+        for (let i = 1; i < points.length; i += 1) penCtx.lineTo(points[i].x, points[i].y);
+      }
+      penCtx.stroke();
+    }
+
+    function redrawInk() {
+      const dpr = window.devicePixelRatio || 1;
+      penCtx.setTransform(1, 0, 0, 1, 0, 0);
+      penCtx.clearRect(0, 0, penCanvas.width, penCanvas.height);
+      applyInkTransform();
+      penStyle();
+      inkStrokes.forEach(drawStroke);
+      if (activeStroke) drawStroke(activeStroke);
+    }
+
+    function sizePenCanvas() {
+      const dpr = window.devicePixelRatio || 1;
+      const width = Math.max(1, Math.round(stage.clientWidth * dpr));
+      const height = Math.max(1, Math.round(stage.clientHeight * dpr));
+      if (penCanvas.width === width && penCanvas.height === height) {
+        redrawInk();
+        return;
+      }
+      penCanvas.width = width;
+      penCanvas.height = height;
+      redrawInk();
+    }
+
+    function initPenCanvas() {
+      sizePenCanvas();
     }
     initPenCanvas();
 
+    // Grow the board when blocks approach the edge: always leave a screen of space.
+    function ensureWorldBounds() {
+      let maxX = 0;
+      let maxY = 0;
+      boardState.elements.forEach((el) => {
+        maxX = Math.max(maxX, el.x + (el.w || 268));
+        maxY = Math.max(maxY, el.y + (el.h || 160));
+      });
+
+      const step = 1000;
+      // grow only: shrinking could strand the current view outside the board
+      const needW = Math.min(WORLD_MAX, Math.max(worldW, Math.ceil((maxX + stage.clientWidth) / step) * step));
+      const needH = Math.min(WORLD_MAX, Math.max(worldH, Math.ceil((maxY + stage.clientHeight) / step) * step));
+      if (needW === worldW && needH === worldH) return;
+
+      worldW = needW;
+      worldH = needH;
+      world.style.width = `${worldW}px`;
+      world.style.height = `${worldH}px`;
+    }
+
+    function clampPan() {
+      const minX = Math.min(0, stage.clientWidth - worldW);
+      const minY = Math.min(0, stage.clientHeight - worldH);
+      boardState.panX = Math.max(minX, Math.min(0, boardState.panX));
+      boardState.panY = Math.max(minY, Math.min(0, boardState.panY));
+    }
+
+    window.addEventListener("resize", () => {
+      ensureWorldBounds();
+      clampPan();
+      sizePenCanvas();
+      applyPanTransform();
+    });
+
     function updateBlockCounter() {
       indBlocks.textContent = String(boardState.elements.length);
+      if (clearBlocksBtn) clearBlocksBtn.disabled = boardState.elements.length === 0;
+    }
+
+    // ---- board events ----------------------------------------------------
+    // Semantic actions only. Moves and resizes are logged once per gesture (on
+    // release), and only the latest one per block is kept, so they can't crowd out
+    // quiz and checklist events or burn tokens.
+    function recordBoardEvent(type, detail = {}) {
+      const event = { type, ...detail };
+      if (type === "block_moved" || type === "block_resized") {
+        boardState.events = boardState.events.filter((e) => !(e.type === type && e.id === event.id));
+      }
+      const last = boardState.events[boardState.events.length - 1];
+      if (last && JSON.stringify(last) === JSON.stringify(event)) return;
+      boardState.events.push(event);
+      if (boardState.events.length > 24) boardState.events.shift();
+    }
+
+    function eventForCard(body, type, detail = {}) {
+      const card = body.closest(".card");
+      const record = card ? boardState.elements.find((el) => el.id === card.dataset.id) : null;
+      recordBoardEvent(type, {
+        id: record ? record.id : card ? card.dataset.id : undefined,
+        title: record ? record.title : undefined,
+        ...detail
+      });
+    }
+
+    // ---- panel control ---------------------------------------------------
+    // Deletes are destructive, so matching is strict: id, then exact title, then a
+    // partial title only if it is unambiguous and no (wrong) id was supplied.
+    function findRecord(target) {
+      if (!target || typeof target !== "object") return null;
+      const id = target.id || target.target_id;
+      if (id) {
+        const byId = boardState.elements.find((el) => el.id === String(id));
+        if (byId) return byId;
+      }
+      const name = target.title || target.target;
+      if (!name) return null;
+      const needle = String(name).trim().toLowerCase();
+      if (!needle) return null;
+      const titleOf = (el) => String(el.title).toLowerCase();
+      let hits = boardState.elements.filter((el) => titleOf(el) === needle || el.id === String(name));
+      if (!hits.length && !id) hits = boardState.elements.filter((el) => titleOf(el).includes(needle));
+      return hits.length === 1 ? hits[0] : null;
+    }
+
+    function deleteRecord(record) {
+      if (!record || !record.el) return false;
+      record.el.remove(); // detach, keep the node so undo can restore it
+      boardState.elements = boardState.elements.filter((el) => el !== record);
+      boardState.removed.push(record);
+      if (boardState.removed.length > 50) boardState.removed.shift();
+      updateBlockCounter();
+      return true;
+    }
+
+    function undoRemove() {
+      const record = boardState.removed.pop();
+      if (!record) return false;
+      world.appendChild(record.el);
+      boardState.elements.push(record);
+      recordBoardEvent("block_restored", { id: record.id, title: record.title, kind: record.kind });
+      updateBlockCounter();
+      return true;
+    }
+
+    function clearBoard() {
+      const all = boardState.elements.slice();
+      all.forEach((record) => deleteRecord(record));
+      return all.length;
+    }
+
+    const CARD_LIMITS = { minW: 200, maxW: 680, minH: 110, maxH: 760 };
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+    // null, "" and undefined mean "not provided", not zero
+    const optionalNumber = (v) => (v === null || v === undefined || v === "" ? NaN : Number(v));
+
+    // Accept the data shapes models actually send: an object, a bare string, or the
+    // fields placed directly on the action ({ type: "add_graph", equation }).
+    function normalizeData(action) {
+      if (action.data && typeof action.data === "object") return action.data;
+      if (typeof action.data === "string") return { text: action.data };
+      const meta = ["op", "id", "target_id", "target", "kind", "type", "title", "place", "col", "x", "y", "w", "h", "data"];
+      return Object.fromEntries(Object.entries(action).filter(([key]) => !meta.includes(key)));
+    }
+
+    function renderInto(body, action) {
+      try {
+        pickRenderer(action.kind, action.data)(body, action);
+      } catch (err) {
+        console.warn("renderer failed", action.kind, err);
+        body.textContent = "";
+      }
+      // a renderer that found nothing to draw must never leave an empty card
+      if (!body.hasChildNodes()) ELEMENT_RENDERERS.dynamic(body, action);
+    }
+
+    function updateRecord(record, action) {
+      if (!record || !record.el) return false;
+      let changed = false;
+      const hasData = action.data !== undefined && action.data !== null;
+      const kind = action.kind ? String(action.kind).toLowerCase() : record.kind;
+
+      // a new title only counts when it isn't the key we used to find the block
+      if (action.new_title || (action.title && (action.id || action.target_id))) {
+        const title = String(action.new_title || action.title).slice(0, 60);
+        if (title !== record.title) {
+          record.title = title;
+          record.el.querySelector(".card-title").textContent = title;
+          changed = true;
+        }
+      }
+
+      if (hasData || kind !== record.kind) {
+        record.kind = kind;
+        if (hasData) record.data = normalizeData(action); // replaces, does not merge
+        const kindEl = record.el.querySelector(".card-kind");
+        kindEl.textContent = kind.toUpperCase();
+        kindEl.title = kind;
+        const body = record.el.querySelector(".card-body");
+        body.textContent = ""; // drop old children, including canvases
+        record.el.classList.remove("quiz-solved");
+        renderInto(body, { kind, title: record.title, data: record.data });
+        changed = true;
+      }
+
+      const w = optionalNumber(action.w);
+      const h = optionalNumber(action.h);
+      if (Number.isFinite(w) || Number.isFinite(h)) {
+        if (Number.isFinite(w)) record.el.style.width = `${clamp(w, CARD_LIMITS.minW, CARD_LIMITS.maxW)}px`;
+        if (Number.isFinite(h)) record.el.style.height = `${clamp(h, CARD_LIMITS.minH, CARD_LIMITS.maxH)}px`;
+        changed = true;
+      }
+      record.w = record.el.offsetWidth;
+      record.h = record.el.offsetHeight;
+      return changed;
+    }
+
+    function moveRecord(record, action) {
+      if (!record || !record.el) return false;
+      const x = optionalNumber(action.x ?? action.data?.x);
+      const y = optionalNumber(action.y ?? action.data?.y);
+      if (!Number.isFinite(x) && !Number.isFinite(y)) return false;
+      // clamp to the largest board, then let ensureWorldBounds grow to fit
+      if (Number.isFinite(x)) record.x = clamp(x, 0, WORLD_MAX - record.w);
+      if (Number.isFinite(y)) record.y = clamp(y, 0, WORLD_MAX - record.h);
+      record.el.style.left = `${record.x}px`;
+      record.el.style.top = `${record.y}px`;
+      ensureWorldBounds();
+      return true;
     }
 
     function removeElement(record, card) {
-      card.remove();
-      boardState.elements = boardState.elements.filter((el) => el.id !== record.id);
-      updateBlockCounter();
+      const ok = deleteRecord(record);
+      if (ok) recordBoardEvent("block_closed", { id: record.id, title: record.title, kind: record.kind });
+      return ok;
     }
 
     function addHistoryEntry(promptText, replyText, spawnedCount) {
@@ -563,6 +1143,7 @@
       if (enabled && boardState.penMode) {
         setPenMode(false);
       }
+      stage.classList.toggle("pan-off", !boardState.panMode);
       panToggle.classList.toggle("active-pan", boardState.panMode);
       panToggle.textContent = boardState.panMode ? "[H] PAN: ON" : "[H] PAN: OFF";
     }
@@ -573,8 +1154,9 @@
         boardState.panMode = false;
         panToggle.classList.remove("active-pan");
         panToggle.textContent = "[H] PAN: OFF";
+        stage.classList.add("pan-off");
       }
-      penCanvas.classList.toggle("drawing", boardState.penMode);
+      stage.classList.toggle("pen-mode", boardState.penMode);
       penToggle.classList.toggle("active-pen", boardState.penMode);
       penToggle.textContent = boardState.penMode ? "[P] PEN: ON" : "[P] PEN: OFF";
       indPen.textContent = boardState.penMode ? "ACTIVE" : "OFF";
@@ -582,7 +1164,9 @@
     }
 
     function clearInk() {
-      penCtx.clearRect(0, 0, penCanvas.width, penCanvas.height);
+      inkStrokes.length = 0;
+      activeStroke = null;
+      redrawInk();
     }
 
     function toggleVoiceMode() {
@@ -613,7 +1197,7 @@
       const target = e.target;
       const isTyping =
         target &&
-        (target.tagName === "INPUT" ||
+        ((target.tagName === "INPUT" && !["checkbox", "radio", "button"].includes(target.type)) ||
           target.tagName === "TEXTAREA" ||
           target.isContentEditable);
 
@@ -622,12 +1206,25 @@
         return;
       }
 
+      // undo the last removed/cleared block (works for panel deletes too)
+      if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === "z" && !isTyping) {
+        if (undoRemove()) {
+          e.preventDefault();
+          addHistoryEntry("UNDO", "Restored the last removed block.", 0);
+        }
+        return;
+      }
+
       if (isTyping || e.ctrlKey || e.metaKey || e.altKey) return;
 
       if (e.code === "Space") {
+        // a focused checkbox keeps Space for itself
+        if (target?.type === "checkbox") return;
+        e.preventDefault(); // otherwise Space also "clicks" the last-used button
         boardState.spaceHeld = true;
         return;
       }
+      if (e.repeat) return;
 
       const key = e.key.toLowerCase();
       if (key === "h") {
@@ -653,15 +1250,38 @@
 
     window.addEventListener("keyup", (e) => {
       if (e.code === "Space") {
+        if (boardState.spaceHeld) e.preventDefault();
         boardState.spaceHeld = false;
       }
     });
 
+    // Alt-tabbing away mid-hold would otherwise leave Space stuck "down"
+    window.addEventListener("blur", () => {
+      boardState.spaceHeld = false;
+    });
+
     stage.addEventListener("pointerdown", (e) => {
-      if (boardState.penMode) return;
+      if (e.button !== 0 && e.button !== 1) return;
+      const panOverride = e.button === 1 || boardState.spaceHeld;
+      if (e.button === 1) e.preventDefault(); // no browser autoscroll
+
+      if (boardState.penMode && !panOverride) {
+        // cards keep working while the pen is armed: only empty board draws
+        if (e.button !== 0 || e.target.closest(".card")) return;
+        boardState.drawing = true;
+        stage.setPointerCapture(e.pointerId);
+        const pt = clientToWorld(e.clientX, e.clientY);
+        activeStroke = { points: [pt] };
+        applyInkTransform();
+        penStyle();
+        penCtx.beginPath();
+        penCtx.moveTo(pt.x, pt.y);
+        return;
+      }
+
       const clickedCard = e.target.closest(".card");
-      const canPan = boardState.panMode || e.button === 1 || boardState.spaceHeld;
-      if (!canPan || (clickedCard && !boardState.spaceHeld && e.button !== 1)) return;
+      const canPan = boardState.panMode || panOverride;
+      if (!canPan || (clickedCard && !panOverride)) return;
 
       boardState.isPanning = true;
       stage.classList.add("panning");
@@ -673,9 +1293,16 @@
     });
 
     stage.addEventListener("pointermove", (e) => {
+      if (boardState.drawing && boardState.penMode && activeStroke) {
+        const pt = clientToWorld(e.clientX, e.clientY);
+        activeStroke.points.push(pt);
+        penCtx.lineTo(pt.x, pt.y);
+        penCtx.stroke();
+        return;
+      }
       if (!boardState.isPanning) return;
-      const minX = Math.min(0, stage.clientWidth - WORLD_SIZE);
-      const minY = Math.min(0, stage.clientHeight - WORLD_SIZE);
+      const minX = Math.min(0, stage.clientWidth - worldW);
+      const minY = Math.min(0, stage.clientHeight - worldH);
       const nextX = originPanX + (e.clientX - panStartX);
       const nextY = originPanY + (e.clientY - panStartY);
       boardState.panX = Math.max(minX, Math.min(0, nextX));
@@ -683,12 +1310,21 @@
       applyPanTransform();
     });
 
+    function finishStroke() {
+      if (activeStroke && activeStroke.points.length) inkStrokes.push(activeStroke);
+      activeStroke = null;
+      boardState.drawing = false;
+      redrawInk();
+    }
+
     stage.addEventListener("pointerup", () => {
+      if (boardState.drawing) finishStroke();
       boardState.isPanning = false;
       stage.classList.remove("panning");
     });
 
     stage.addEventListener("pointercancel", () => {
+      if (boardState.drawing) finishStroke();
       boardState.isPanning = false;
       stage.classList.remove("panning");
     });
@@ -696,6 +1332,17 @@
     panToggle.addEventListener("click", () => setPanMode(!boardState.panMode));
     penToggle.addEventListener("click", () => setPenMode(!boardState.penMode));
     clearPenBtn.addEventListener("click", clearInk);
+    clearBlocksBtn.addEventListener("click", () => {
+      const count = boardState.elements.length;
+      if (!count) return;
+      clearBoard();
+      recordBoardEvent("board_cleared", { count });
+      addHistoryEntry(
+        "CLEAR",
+        `Removed ${count} block${count === 1 ? "" : "s"}. Ctrl+Z brings them back one at a time.`,
+        0
+      );
+    });
     resetPanBtn.addEventListener("click", resetPanToOrigin);
     voiceToggle.addEventListener("click", toggleVoiceMode);
 
@@ -707,39 +1354,17 @@
       };
     }
 
-    penCanvas.addEventListener("pointerdown", (e) => {
-      if (!boardState.penMode) return;
-      boardState.drawing = true;
-      penCanvas.setPointerCapture(e.pointerId);
-      const pt = clientToWorld(e.clientX, e.clientY);
-      penCtx.beginPath();
-      penCtx.moveTo(pt.x, pt.y);
-    });
-
-    penCanvas.addEventListener("pointermove", (e) => {
-      if (!boardState.penMode || !boardState.drawing) return;
-      const pt = clientToWorld(e.clientX, e.clientY);
-      penCtx.lineTo(pt.x, pt.y);
-      penCtx.stroke();
-    });
-
-    penCanvas.addEventListener("pointerup", () => {
-      boardState.drawing = false;
-    });
-
-    penCanvas.addEventListener("pointercancel", () => {
-      boardState.drawing = false;
-    });
-
     function makeDraggable(card, record) {
       const handle = card.querySelector(".card-header");
       let dragging = false, grabOffsetX = 0, grabOffsetY = 0;
+      let startPos = null;
 
       handle.addEventListener("pointerdown", (e) => {
         if (e.target.closest(".card-close")) return;
-        if (boardState.spaceHeld || e.button === 1) return;
+        if (boardState.spaceHeld || e.button !== 0) return;
         e.stopPropagation();
         dragging = true;
+        startPos = { x: record.x, y: record.y };
         handle.setPointerCapture(e.pointerId);
         const wPt = clientToWorld(e.clientX, e.clientY);
         grabOffsetX = wPt.x - record.x;
@@ -749,21 +1374,142 @@
       handle.addEventListener("pointermove", (e) => {
         if (!dragging) return;
         const wPt = clientToWorld(e.clientX, e.clientY);
-        const x = Math.max(0, Math.min(WORLD_SIZE - card.offsetWidth, wPt.x - grabOffsetX));
-        const y = Math.max(0, Math.min(WORLD_SIZE - card.offsetHeight, wPt.y - grabOffsetY));
+        const x = Math.max(0, Math.min(worldW - card.offsetWidth, wPt.x - grabOffsetX));
+        const y = Math.max(0, Math.min(worldH - card.offsetHeight, wPt.y - grabOffsetY));
         record.x = x;
         record.y = y;
         card.style.left = `${x}px`;
         card.style.top = `${y}px`;
       });
 
-      handle.addEventListener("pointerup", () => {
+      const stop = () => {
+        if (!dragging) return;
         dragging = false;
+        if (record.x === startPos.x && record.y === startPos.y) return;
+        recordBoardEvent("block_moved", {
+          id: record.id, title: record.title, x: Math.round(record.x), y: Math.round(record.y)
+        });
+        ensureWorldBounds();
+      };
+      handle.addEventListener("pointerup", stop);
+      handle.addEventListener("pointercancel", stop);
+    }
+
+    // ---- resizing -------------------------------------------------------
+    function applyCardSize(card, record, w, h) {
+      card.style.width = `${w}px`;
+      card.style.height = `${h}px`;
+      record.w = w;
+      record.h = h;
+      // the canvas grows via flexbox (see .card canvas); its ResizeObserver redraws the plot
+
+      const maxLeft = worldW - w;
+      const maxTop = worldH - h;
+      if (record.x > maxLeft) {
+        record.x = Math.max(0, maxLeft);
+        card.style.left = `${record.x}px`;
+      }
+      if (record.y > maxTop) {
+        record.y = Math.max(0, maxTop);
+        card.style.top = `${record.y}px`;
+      }
+    }
+
+    function makeResizable(card, record) {
+      const grip = card.querySelector(".card-resize");
+      if (!grip) return;
+      let resizing = false;
+      let startX = 0;
+      let startY = 0;
+      let startW = 0;
+      let startH = 0;
+
+      grip.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        e.preventDefault();
+        resizing = true;
+        grip.setPointerCapture(e.pointerId);
+        startX = e.clientX;
+        startY = e.clientY;
+        startW = card.offsetWidth;
+        startH = card.offsetHeight;
       });
 
-      handle.addEventListener("pointercancel", () => {
-        dragging = false;
+      grip.addEventListener("pointermove", (e) => {
+        if (!resizing) return;
+        const w = clamp(startW + (e.clientX - startX), CARD_LIMITS.minW, CARD_LIMITS.maxW);
+        const h = clamp(startH + (e.clientY - startY), CARD_LIMITS.minH, CARD_LIMITS.maxH);
+        applyCardSize(card, record, w, h);
       });
+
+      const stop = () => {
+        if (!resizing) return;
+        resizing = false;
+        if (record.w === startW && record.h === startH) return;
+        recordBoardEvent("block_resized", { id: record.id, title: record.title, w: record.w, h: record.h });
+        ensureWorldBounds();
+      };
+      grip.addEventListener("pointerup", stop);
+      grip.addEventListener("pointercancel", stop);
+    }
+
+    // ---- answer grading -------------------------------------------------
+    // Local, so a quiz works offline and costs no tokens.
+    function normalizeAnswer(v) {
+      return String(v ?? "")
+        .replace(/²/g, "^2")
+        .replace(/³/g, "^3")
+        .normalize("NFKC")
+        .toLowerCase()
+        .replace(/\u2212/g, "-")
+        .replace(/\*\*/g, "^")
+        .replace(/(\d),(?=\d{3}(?!\d))/g, "$1")
+        .replace(/[\s*$`"']/g, "")
+        .replace(/[.,;]+$/, "");
+    }
+
+    // The numbers in an answer that is only a list of values ("x = 3 and x = 1",
+    // "1, 3"). Returns null for anything else, so "x^2" never matches "2x".
+    function valueList(v) {
+      const number = /-?(?:\d+(?:\.\d+)?|\.\d+)/g;
+      const text = String(v).toLowerCase().replace(/\u2212/g, "-");
+      const names = new Set((text.match(/\b[a-z]\s*=/g) || []).map((m) => m[0]));
+      if (names.size > 1) return null;
+      const leftover = text
+        .replace(/\b[a-z]\s*=/g, " ")
+        .replace(number, " ")
+        .replace(/\b(and|or)\b|[,;&\s]|\.$/g, "");
+      if (leftover) return null;
+      return (text.match(number) || []).map(Number).sort((a, b) => a - b);
+    }
+
+    function answersMatch(given, expected) {
+      const a = normalizeAnswer(given);
+      const b = normalizeAnswer(expected);
+      if (!a || !b) return false;
+      if (a === b) return true;
+
+      // "x = 3 and x = 1" should match "x = 1 and x = 3"
+      const na = valueList(given);
+      const nb = valueList(expected);
+      if (!na || !nb || !nb.length || na.length !== nb.length) return false;
+      return na.every((value, i) => Math.abs(value - nb[i]) < 1e-9);
+    }
+
+    // Which choice is right? Exact text first, then a letter key ("B"), and only
+    // then loose matching, which must single out exactly one choice.
+    function correctChoiceIndex(choices, expected) {
+      const wanted = normalizeAnswer(expected);
+      const exact = choices.findIndex((c) => normalizeAnswer(c) === wanted);
+      if (exact !== -1) return exact;
+      const letter = String(expected).trim().match(/^\(?([a-f])[).]?$/i);
+      if (letter) {
+        const i = letter[1].toLowerCase().charCodeAt(0) - 97;
+        if (i < choices.length) return i;
+      }
+      const loose = choices.map((c, i) => (answersMatch(c, expected) ? i : -1)).filter((i) => i !== -1);
+      return loose.length === 1 ? loose[0] : -1;
     }
 
     const EXPR_FUNCS = {
@@ -774,41 +1520,82 @@
       ceil: Math.ceil, round: Math.round, sign: Math.sign
     };
     const EXPR_CONSTS = { pi: Math.PI, PI: Math.PI, e: Math.E, E: Math.E };
+    const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 
-    // Compile "x^2 - 4*x + 3" into a closure. Identifiers are whitelisted first, so
-    // a model-supplied equation can never smuggle fetch()/alert()/constructor in.
+    // Compile "x^2 - 4x + 3" into a closure with a small recursive-descent parser.
+    // Nothing is ever eval'd: only x, the constants and the functions above exist.
+    // Precedence: ^ (right-assoc), then unary minus, then * / and implicit "2x".
     function compileExpression(expr) {
       const src = String(expr || "")
+        .replace(/²/g, "^2")
+        .replace(/³/g, "^3")
+        .replace(/\u2212/g, "-")
+        .replace(/\u03c0/g, "pi")
+        .replace(/\*\*/g, "^")
         .trim()
-        .replace(/^[a-zA-Z]\s*\(\s*x\s*\)\s*=/, "")
+        .replace(/^(?:[a-zA-Z]\s*\(\s*x\s*\)|y)\s*=/, "")
         .trim();
-      if (!src || !/^[0-9a-zA-Z_+\-*/().,\s^]*$/.test(src)) return null;
+      if (!src || src.length > 200) return null;
 
-      const idents = src.match(/[a-zA-Z_][a-zA-Z_0-9]*/g) || [];
-      for (const id of idents) {
-        if (id === "x") continue;
-        if (!(id in EXPR_FUNCS) && !(id in EXPR_CONSTS)) return null;
-      }
+      const tokens = src.match(/\d+(?:\.\d*)?|\.\d+|[a-zA-Z_]\w*|\S/g) || [];
+      let pos = 0;
+      const peek = () => tokens[pos];
+      const fail = () => { throw new Error("bad expression"); };
+      const expect = (t) => { if (tokens[pos++] !== t) fail(); };
 
-      // "^" -> Math.pow with a bounded exponent, so "-x^2" stays valid JS
-      const body = src.replace(
-        /([a-zA-Z_0-9.)]+)\s*\^\s*(\([^()]*\)|[0-9.]+|[a-zA-Z_][a-zA-Z_0-9]*)/g,
-        "Math.pow($1,$2)"
-      );
+      const sum = () => {
+        let left = product();
+        while (peek() === "+" || peek() === "-") {
+          const op = tokens[pos++];
+          const a = left, b = product();
+          left = op === "+" ? (x) => a(x) + b(x) : (x) => a(x) - b(x);
+        }
+        return left;
+      };
+      const product = () => {
+        let left = unary();
+        for (;;) {
+          const t = peek();
+          const explicit = t === "*" || t === "/";
+          const implicit = t !== undefined && /^[a-zA-Z_(]/.test(t);
+          if (!explicit && !implicit) return left;
+          if (explicit) pos++;
+          const a = left, b = explicit ? unary() : power();
+          left = t === "/" ? (x) => a(x) / b(x) : (x) => a(x) * b(x);
+        }
+      };
+      const unary = () => {
+        if (peek() === "-") { pos++; const a = unary(); return (x) => -a(x); }
+        if (peek() === "+") { pos++; return unary(); }
+        return power();
+      };
+      const power = () => {
+        const base = primary();
+        if (peek() !== "^") return base;
+        pos++;
+        const exp = unary();
+        return (x) => Math.pow(base(x), exp(x));
+      };
+      const primary = () => {
+        const t = tokens[pos++];
+        if (t === undefined) fail();
+        if (t === "(") { const inner = sum(); expect(")"); return inner; }
+        if (/^[\d.]/.test(t)) { const n = Number(t); if (!Number.isFinite(n)) fail(); return () => n; }
+        if (t === "x") return (x) => x;
+        if (hasOwn(EXPR_CONSTS, t)) { const c = EXPR_CONSTS[t]; return () => c; }
+        if (hasOwn(EXPR_FUNCS, t)) {
+          const f = EXPR_FUNCS[t];
+          expect("(");
+          const arg = sum();
+          expect(")");
+          return (x) => f(arg(x));
+        }
+        return fail();
+      };
 
       try {
-        const fn = Function(
-          "x", "F", "C",
-          `const {${Object.keys(EXPR_FUNCS)}} = F; const {${Object.keys(EXPR_CONSTS)}} = C; return (${body});`
-        );
-        return (x) => {
-          try {
-            const v = fn(x, EXPR_FUNCS, EXPR_CONSTS);
-            return typeof v === "number" ? v : NaN;
-          } catch (_) {
-            return NaN;
-          }
-        };
+        const fn = sum();
+        return pos === tokens.length ? fn : null;
       } catch (_) {
         return null;
       }
@@ -902,54 +1689,348 @@
         const scale = document.createElement("span");
         note.append(label, scale);
         body.append(gCanvas, note);
-        registerPlot(gCanvas, d.equation || "x^2", note);
+        // no silent default: a missing equation shows as unparsed, not as x^2
+        registerPlot(gCanvas, d.equation || d.expression || d.function || d.formula || "", note);
       },
 
       quiz(body, action) {
         const d = action.data || action;
+        const expected = String(d.answer ?? "").trim();
+        const choices = Array.isArray(d.choices) ? d.choices.slice(0, 6) : null;
+
         const q = document.createElement("div");
         q.className = "quiz-q";
         q.textContent = d.question || "Practice question";
+        body.appendChild(q);
 
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.textContent = "SHOW ANSWER";
+        const feedback = document.createElement("div");
+        feedback.className = "quiz-feedback";
 
-        const ans = document.createElement("div");
-        ans.className = "quiz-a";
-        ans.textContent = d.answer || "";
+        let lastGiven = "";
 
-        btn.addEventListener("click", () => {
-          const visible = ans.style.display === "block";
-          ans.style.display = visible ? "none" : "block";
-          btn.textContent = visible ? "SHOW ANSWER" : "HIDE ANSWER";
+        const hintBtn = document.createElement("button");
+        hintBtn.type = "button";
+        hintBtn.className = "secondary";
+        hintBtn.style.marginTop = "6px";
+        hintBtn.textContent = "ASK FOR A HINT";
+        hintBtn.addEventListener("click", () => {
+          handleCommand(
+            `I answered "${lastGiven}" to "${String(d.question || "").slice(0, 160)}" and it was wrong. ` +
+              "Give me a hint without telling me the answer."
+          );
         });
 
-        body.append(q, btn, ans);
+        const mark = (correct, given) => {
+          const card = body.closest(".card");
+          lastGiven = String(given || "");
+          eventForCard(body, correct ? "quiz_correct" : "quiz_wrong", {
+            question: String(d.question || "").slice(0, 120),
+            given: lastGiven.slice(0, 80),
+            expected: expected.slice(0, 80),
+            correct
+          });
+
+          if (correct) {
+            feedback.className = "quiz-feedback ok";
+            feedback.textContent = "CORRECT" + (expected ? ` — ${expected}` : "");
+            card?.classList.add("quiz-solved");
+            hintBtn.remove();
+          } else {
+            feedback.className = "quiz-feedback bad";
+            feedback.textContent =
+              `Not quite${given ? ` — you wrote "${given}"` : ""}. Try again, or reveal the answer.`;
+            if (!hintBtn.isConnected) body.insertBefore(hintBtn, reveal);
+          }
+        };
+
+        if (choices && choices.length) {
+          const wrap = document.createElement("div");
+          wrap.className = "quiz-choices";
+          let solved = false;
+          const rightIndex = correctChoiceIndex(choices.map(String), expected);
+          choices.forEach((choice, index) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "quiz-choice";
+            b.textContent = String(choice);
+            b.addEventListener("click", () => {
+              if (solved) return;
+              const correct = index === rightIndex;
+              b.classList.add(correct ? "ok" : "bad");
+              solved = correct;
+              mark(correct, String(choice));
+            });
+            wrap.appendChild(b);
+          });
+          body.appendChild(wrap);
+        } else {
+          // free-text answering: graded locally, no model call
+          const row = document.createElement("div");
+          row.className = "quiz-input-shell";
+
+          const input = document.createElement("input");
+          input.type = "text";
+          input.placeholder = "Type your answer…";
+          input.autocomplete = "off";
+          input.spellcheck = false;
+
+          const check = document.createElement("button");
+          check.type = "button";
+          check.textContent = "CHECK";
+
+          const submit = () => {
+            const given = input.value.trim();
+            if (!given) { input.focus(); return; }
+            mark(answersMatch(given, expected), given);
+          };
+          check.addEventListener("click", submit);
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.stopPropagation(); // don't submit the sidebar prompt form
+              submit();
+            }
+          });
+
+          row.append(input, check);
+          body.appendChild(row);
+        }
+
+        const reveal = document.createElement("button");
+        reveal.type = "button";
+        reveal.className = "secondary";
+        reveal.style.marginTop = "8px";
+        reveal.textContent = "REVEAL ANSWER";
+        reveal.addEventListener("click", () => {
+          const shown = feedback.classList.contains("ok") && feedback.textContent.startsWith("ANSWER");
+          if (shown) {
+            feedback.className = "quiz-feedback";
+            feedback.textContent = "";
+          } else {
+            feedback.className = "quiz-feedback ok";
+            feedback.textContent = `ANSWER — ${expected || "not provided"}`;
+            eventForCard(body, "quiz_revealed", {
+              question: String(d.question || "").slice(0, 120),
+              expected: expected.slice(0, 80)
+            });
+          }
+        });
+
+        body.append(reveal, feedback);
       },
 
       note(body, action) {
         const d = action.data || action;
         const n = document.createElement("div");
         n.className = "note-text";
-        n.textContent = d.text || d.body || "";
+        const md = d.text || d.body || d.markdown || d.content || d.md;
+        if (!md) return; // renderInto falls back to the dynamic renderer
+        n.appendChild(renderMarkdown(String(md)));
         body.appendChild(n);
       },
 
-      dynamic(body, action) {
+      // free-form card: a title plus a markdown body. This is the escape hatch that
+      // lets the model compose anything instead of picking from fixed kinds.
+      card(body, action) {
+        const d = action.data || action;
+        const md = d.body || d.markdown || d.text || d.content || d.md;
+        if (!md) {
+          ELEMENT_RENDERERS.dynamic(body, action);
+          return;
+        }
+        body.appendChild(renderMarkdown(String(md)));
+      },
+
+      // 2D matrix (sudoku, truth table, pixel art): rows of arrays, or equal-length
+      // strings like "53.7....." — models call this rows, puzzle, grid, board...
+      grid(body, action) {
         const d = action.data || {};
-        const listSource = Array.isArray(d.items) ? d.items : Array.isArray(d.steps) ? d.steps : null;
-        if (listSource) {
-          const ul = document.createElement("ul");
-          ul.style.paddingLeft = "16px";
-          ul.style.fontSize = "12px";
-          ul.style.lineHeight = "1.5";
-          listSource.forEach((entry) => {
-            const li = document.createElement("li");
-            li.textContent = typeof entry === "string" ? entry : JSON.stringify(entry);
-            ul.appendChild(li);
+        const found = findMatrix(d);
+        if (!found) {
+          ELEMENT_RENDERERS.dynamic(body, action);
+          return;
+        }
+
+        const matrix = found.matrix.slice(0, 12);
+        const width = Math.max(...matrix.map((row) => row.length));
+        const table = document.createElement("table");
+        table.className = "block-grid";
+        matrix.forEach((row) => {
+          const tr = document.createElement("tr");
+          for (let i = 0; i < width; i += 1) {
+            const td = document.createElement("td");
+            const cell = row[i] === undefined || row[i] === null ? "" : String(row[i]).trim();
+            // "0" means empty only in a 9x9 sudoku; elsewhere it is a real value
+            const blank = /^[.\-_·•?]*$/.test(cell) || (cell === "0" && matrix.length === 9 && width === 9);
+            td.textContent = blank ? "·" : cell;
+            if (blank) td.classList.add("empty");
+            tr.appendChild(td);
+          }
+          table.appendChild(tr);
+        });
+        body.appendChild(table);
+
+        const caption = d.note || d.caption || d.hint || d.text;
+        if (caption) {
+          const n = document.createElement("div");
+          n.className = "note-text";
+          n.style.marginTop = "8px";
+          n.textContent = String(caption);
+          body.appendChild(n);
+        }
+      },
+
+      // comparison table: data.headers + data.rows (rows as arrays or scalars)
+      table(body, action) {
+        const d = action.data || {};
+        const headers = Array.isArray(d.headers) ? d.headers : Array.isArray(d.columns) ? d.columns : [];
+        const rows = Array.isArray(d.rows) ? d.rows : [];
+        if (!rows.length) {
+          ELEMENT_RENDERERS.dynamic(body, action);
+          return;
+        }
+        const table = document.createElement("table");
+        table.className = "block-table";
+        if (headers.length) {
+          const thead = document.createElement("thead");
+          const tr = document.createElement("tr");
+          headers.slice(0, 6).forEach((h) => {
+            const th = document.createElement("th");
+            th.textContent = String(h);
+            tr.appendChild(th);
           });
-          body.appendChild(ul);
+          thead.appendChild(tr);
+          table.appendChild(thead);
+        }
+        const tbody = document.createElement("tbody");
+        rows.slice(0, 12).forEach((row) => {
+          const tr = document.createElement("tr");
+          const cells = Array.isArray(row) ? row : row && typeof row === "object" ? Object.values(row) : [row];
+          cells.slice(0, 6).forEach((cell) => {
+            const td = document.createElement("td");
+            td.textContent = formatBlockEntry(cell);
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        body.appendChild(table);
+      },
+
+      checklist(body, action) {
+        const d = action.data || {};
+        const items = firstArray(d) || [];
+        if (!items.length) {
+          ELEMENT_RENDERERS.dynamic(body, action);
+          return;
+        }
+        const ul = document.createElement("ul");
+        ul.className = "block-checklist";
+        items.slice(0, 15).forEach((entry) => {
+          const li = document.createElement("li");
+          const label = document.createElement("label");
+          const box = document.createElement("input");
+          box.type = "checkbox";
+          box.checked = Boolean(entry && typeof entry === "object" && (entry.done || entry.checked));
+          const span = document.createElement("span");
+          span.textContent = formatBlockEntry(entry);
+          box.addEventListener("change", () => {
+            eventForCard(body, "checklist_toggle", {
+              item: span.textContent.slice(0, 100),
+              checked: box.checked
+            });
+          });
+          label.append(box, span);
+          li.appendChild(label);
+          ul.appendChild(li);
+        });
+        body.appendChild(ul);
+      },
+
+      // listed here so the proxy advertises it; the dynamic renderer numbers data.steps
+      steps(body, action) {
+        ELEMENT_RENDERERS.dynamic(body, action);
+      },
+
+      formula(body, action) {
+        const d = action.data || {};
+        const expr = String(d.expression || d.formula || d.equation || "").trim();
+        const el = document.createElement("div");
+        el.className = "block-formula";
+        el.textContent = expr || "—";
+        body.appendChild(el);
+        const caption = d.note || d.notes || d.caption;
+        if (caption) {
+          const n = document.createElement("div");
+          n.className = "note-text";
+          n.textContent = formatBlockEntry(caption);
+          body.appendChild(n);
+        }
+      },
+
+      dynamic(body, action) {
+        const raw = action.data;
+        const d = raw && typeof raw === "object" ? raw : { value: raw ?? "" };
+
+        const list = firstArray(d);
+
+        if (list) {
+          const ordered = Array.isArray(d.steps);
+          const allStrings = list.every((entry) => typeof entry === "string");
+          // "Domain: ..." style comparisons read as a two-column list, not bullets
+          const colonPairs =
+            !ordered &&
+            allStrings &&
+            list.length >= 3 &&
+            list.filter((entry) => /^[^:]{1,40}:\s+\S/.test(entry)).length >= Math.ceil(list.length * 0.7);
+
+          if (colonPairs) {
+            renderKeyValueList(list, body);
+            return;
+          }
+
+          const listEl = document.createElement(ordered ? "ol" : "ul");
+          listEl.className = "block-list";
+          list.slice(0, 20).forEach((entry) => {
+            const li = document.createElement("li");
+            li.textContent = formatBlockEntry(entry);
+            listEl.appendChild(li);
+          });
+          body.appendChild(listEl);
+          return;
+        }
+
+        // a long prose field is a card body, not a key/value pair
+        const longText = Object.entries(d).find(
+          ([key, value]) =>
+            typeof value === "string" &&
+            value.length > 180 &&
+            /^(body|text|content|explanation|summary|markdown|md|details)$/i.test(key)
+        );
+        if (longText) {
+          body.appendChild(renderMarkdown(longText[1]));
+          return;
+        }
+
+        // key/value or formula style payloads get a definition list, not raw JSON
+        const pairs = Object.entries(d).filter(
+          ([, v]) => typeof v === "string" || typeof v === "number" || typeof v === "boolean"
+        );
+        if (pairs.length) {
+          const dl = document.createElement("div");
+          dl.className = "block-kv";
+          pairs.slice(0, 14).forEach(([key, value]) => {
+            const row = document.createElement("div");
+            const k = document.createElement("span");
+            k.className = "kv-key";
+            k.textContent = key.replace(/[_-]+/g, " ");
+            const v = document.createElement("span");
+            v.className = "kv-val";
+            v.textContent = String(value);
+            row.append(k, v);
+            dl.appendChild(row);
+          });
+          body.appendChild(dl);
           return;
         }
 
@@ -957,10 +2038,242 @@
         pre.style.whiteSpace = "pre-wrap";
         pre.style.fontSize = "11.5px";
         pre.style.lineHeight = "1.45";
-        pre.textContent = typeof d === "string" ? d : JSON.stringify(d, null, 2);
+        pre.textContent = JSON.stringify(d, null, 2);
         body.appendChild(pre);
       }
     };
+
+    // Any 2D grid hiding in the payload: rows of arrays, or strings like "53.7....."
+    // or "Row 1: 1 . 3 ." — models name it rows / puzzle / grid / items, so look.
+    function parseMatrixRow(row) {
+      if (Array.isArray(row)) return row.map((cell) => String(cell).trim());
+      let text = String(row).trim();
+      // drop a row label: "Row 1: 1 . 3 ." / "r2 - ..." / "1| ..."
+      // (only real row labels: "T | F | T" must keep its first cell)
+      text = text.replace(/^(?:row|r)\s*\d{1,2}\s*[:.\-\u2013|]\s*/i, "");
+      const compact = text.replace(/\s+/g, "");
+      // split per character for "53.7....." but not for "10 20 30"
+      const packed = !/[\s,|]/.test(text) || text.split(/[\s,|]+/).some((t) => t.length > 1 && /[._#*?\u00b7]/.test(t));
+      if (packed && /^[0-9.\-_#*?\u00b7]+$/.test(compact)) return compact.split("");
+      return text.split(/[\s,|]+/).filter(Boolean);
+    }
+
+    function findMatrix(data) {
+      if (!data || typeof data !== "object") return null;
+      const preferred = ["rows", "grid", "puzzle", "board", "matrix", "cells", "items", "data"];
+      const entries = Object.entries(data).filter(([, value]) => Array.isArray(value) && value.length >= 2);
+      entries.sort((a, b) => {
+        const ai = preferred.indexOf(a[0]);
+        const bi = preferred.indexOf(b[0]);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      });
+
+      for (const [key, value] of entries) {
+        const rows = value.map(parseMatrixRow);
+        if (rows.length < 2 || rows.some((row) => row.length < 2)) continue;
+        if (new Set(rows.map((row) => row.length)).size !== 1) continue;
+        // short cells only: prose split on spaces must not become a grid
+        const cellLike = rows.every((row) => row.every((cell) => cell.length <= 3));
+        if (cellLike) return { key, matrix: rows };
+      }
+      return null;
+    }
+
+    // ---- safe markdown ---------------------------------------------------
+    // Model text is escaped FIRST, then a small markdown subset is turned into
+    // elements. No raw HTML from the model ever reaches innerHTML.
+    function escapeHtml(value) {
+      return String(value).replace(
+        /[&<>"']/g,
+        (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch])
+      );
+    }
+
+    function inlineMarkup(text) {
+      // split on code spans first, so "`2**x`" is never read as bold/italic
+      return String(text)
+        .split(/(`[^`]+`)/)
+        .map((part) => {
+          if (/^`[^`]+`$/.test(part)) return `<code>${escapeHtml(part.slice(1, -1))}</code>`;
+          return escapeHtml(part)
+            .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+            .replace(/(^|[^*\w])\*([^*\s](?:[^*\n]*[^*\s])?)\*(?!\w)/g, "$1<em>$2</em>")
+            .replace(
+              /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+              '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+            );
+        })
+        .join("");
+    }
+
+    function renderMarkdown(text) {
+      const frag = document.createDocumentFragment();
+      const lines = String(text ?? "").replace(/\r\n?/g, "\n").split("\n");
+      const add = (tag, html, cls) => {
+        const el = document.createElement(tag);
+        if (cls) el.className = cls;
+        if (html !== undefined) el.innerHTML = html;
+        frag.appendChild(el);
+        return el;
+      };
+
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i];
+
+        if (!line.trim()) { i += 1; continue; }
+
+        if (/^\s*```/.test(line)) {
+          const buf = [];
+          i += 1;
+          while (i < lines.length && !/^\s*```/.test(lines[i])) buf.push(lines[i++]);
+          i += 1;
+          add("pre", escapeHtml(buf.join("\n")), "md-pre");
+          continue;
+        }
+
+        const heading = line.match(/^(#{1,4})\s+(.*)$/);
+        if (heading) {
+          add(`h${Math.min(4, heading[1].length + 2)}`, inlineMarkup(heading[2]), "md-h");
+          i += 1;
+          continue;
+        }
+
+        if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) {
+          frag.appendChild(document.createElement("hr"));
+          i += 1;
+          continue;
+        }
+
+        if (line.includes("|") && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(lines[i + 1])) {
+          const cells = (row) =>
+            row.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+          const head = cells(line);
+          i += 2;
+          const table = document.createElement("table");
+          table.className = "block-table";
+          const thead = document.createElement("thead");
+          const trh = document.createElement("tr");
+          head.forEach((c) => {
+            const th = document.createElement("th");
+            th.innerHTML = inlineMarkup(c);
+            trh.appendChild(th);
+          });
+          thead.appendChild(trh);
+          table.appendChild(thead);
+          const tbody = document.createElement("tbody");
+          while (i < lines.length && lines[i].includes("|") && lines[i].trim()) {
+            const tr = document.createElement("tr");
+            cells(lines[i]).forEach((c) => {
+              const td = document.createElement("td");
+              td.innerHTML = inlineMarkup(c);
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+            i += 1;
+          }
+          table.appendChild(tbody);
+          frag.appendChild(table);
+          continue;
+        }
+
+        if (/^\s*[-*•]\s+/.test(line)) {
+          const ul = document.createElement("ul");
+          ul.className = "block-list";
+          while (i < lines.length && /^\s*[-*•]\s+/.test(lines[i])) {
+            const li = document.createElement("li");
+            li.innerHTML = inlineMarkup(lines[i].replace(/^\s*[-*•]\s+/, ""));
+            ul.appendChild(li);
+            i += 1;
+          }
+          frag.appendChild(ul);
+          continue;
+        }
+
+        if (/^\s*\d+[.)]\s+/.test(line)) {
+          const ol = document.createElement("ol");
+          ol.className = "block-list";
+          while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
+            const li = document.createElement("li");
+            li.innerHTML = inlineMarkup(lines[i].replace(/^\s*\d+[.)]\s+/, ""));
+            ol.appendChild(li);
+            i += 1;
+          }
+          frag.appendChild(ol);
+          continue;
+        }
+
+        if (/^\s*>\s?/.test(line)) {
+          const buf = [];
+          while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+            buf.push(lines[i].replace(/^\s*>\s?/, ""));
+            i += 1;
+          }
+          add("blockquote", inlineMarkup(buf.join(" ")), "md-quote");
+          continue;
+        }
+
+        const para = [];
+        while (
+          i < lines.length &&
+          lines[i].trim() &&
+          !/^\s*(#{1,4}\s|```|>|[-*•]\s|\d+[.)]\s)/.test(lines[i]) &&
+          !(para.length && lines[i].includes("|") && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(lines[i + 1] || ""))
+        ) {
+          para.push(lines[i]);
+          i += 1;
+        }
+        if (!para.length) para.push(lines[i++]);
+        add("p", inlineMarkup(para.join(" ")), "md-p");
+      }
+
+      return frag;
+    }
+
+    // Models don't always use the field names you documented, so look for the first
+    // array under the usual keys before giving up on it.
+    function firstArray(data) {
+      if (!data || typeof data !== "object") return null;
+      for (const key of ["items", "steps", "checklist", "tasks", "bullets", "points", "list", "rows"]) {
+        if (Array.isArray(data[key])) return data[key];
+      }
+      for (const value of Object.values(data)) {
+        if (Array.isArray(value)) return value;
+      }
+      return null;
+    }
+
+    // "Key: value" bullets -> two-column key/value block
+    function renderKeyValueList(list, body) {
+      const dl = document.createElement("div");
+      dl.className = "block-kv";
+      list.slice(0, 20).forEach((entry) => {
+        const idx = String(entry).indexOf(":");
+        const row = document.createElement("div");
+        const key = document.createElement("span");
+        key.className = "kv-key";
+        key.textContent = idx > 0 ? String(entry).slice(0, idx) : "";
+        const val = document.createElement("span");
+        val.className = "kv-val";
+        val.textContent = idx > 0 ? String(entry).slice(idx + 1).trim() : String(entry);
+        row.append(key, val);
+        dl.appendChild(row);
+      });
+      body.appendChild(dl);
+    }
+
+    function formatBlockEntry(entry) {
+      if (entry === null || entry === undefined) return "";
+      if (typeof entry === "string") return entry;
+      if (typeof entry === "number" || typeof entry === "boolean") return String(entry);
+      if (Array.isArray(entry)) return entry.map(formatBlockEntry).join(" · ");
+      // {task, done} / {name, value} style objects: join the meaningful fields only
+      const values = Object.values(entry)
+        .filter((v) => typeof v !== "boolean" && v !== null && v !== undefined)
+        .map(formatBlockEntry)
+        .filter(Boolean);
+      return values.join(" — ");
+    }
 
     function boxesOverlap(a, b, pad = 16) {
       return (
@@ -971,60 +2284,120 @@
       );
     }
 
-    // First-fit scan across the *visible* viewport first (so new blocks don't land
-    // behind the sidebar or off-screen), then the whole world. Old version only
-    // staggered by element index and happily overlapped.
-    function pickNonOverlappingPosition(preferredX, preferredY, w, h) {
-      const viewLeft = Math.max(8, -boardState.panX + 24);
-      const viewTop = Math.max(8, -boardState.panY + 24);
-      const viewRight = Math.min(WORLD_SIZE, -boardState.panX + stage.clientWidth - 24);
-      const viewBottom = Math.min(WORLD_SIZE, -boardState.panY + stage.clientHeight - 24);
+    // ---- layout ----------------------------------------------------------
+    // The model hints *structure*, not pixels. The board packs the whole batch into
+    // equal-width columns with consistent gutters, so a set of blocks reads as one
+    // cluster instead of scattered guesses.
+    const LAYOUT = { pad: 24, colW: 268, gutterX: 20, gutterY: 20, snap: 8 };
 
-      const baseX = typeof preferredX === "number" ? preferredX : viewLeft;
-      const baseY = typeof preferredY === "number" ? preferredY : viewTop;
-      const stepX = w + 20;
-      const stepY = h + 20;
-      const fits = (x, y) => !boardState.elements.some((e) => boxesOverlap({ x, y, w, h }, e));
-
-      const scan = (minX, maxX, minY, maxY) => {
-        for (let y = minY; y + h <= maxY; y += stepY) {
-          for (let x = minX; x + w <= maxX; x += stepX) {
-            if (fits(x, y)) return { x, y };
-          }
-        }
-        return null;
-      };
-
-      return (
-        scan(baseX, viewRight, baseY, viewBottom) ||
-        scan(viewLeft, viewRight, viewTop, viewBottom) ||
-        scan(8, WORLD_SIZE, 8, WORLD_SIZE) || { x: baseX, y: baseY }
-      );
+    function snapTo(v) {
+      return Math.round(v / LAYOUT.snap) * LAYOUT.snap;
     }
 
-    function spawnElement(action) {
+    function columnCount() {
+      const usable = stage.clientWidth - LAYOUT.pad * 2 + LAYOUT.gutterX;
+      return Math.max(1, Math.min(4, Math.floor(usable / (LAYOUT.colW + LAYOUT.gutterX))));
+    }
+
+    function layoutBatch(records) {
+      const cols = columnCount();
+      const startX = Math.max(8, snapTo(-boardState.panX + LAYOUT.pad));
+      const startY = Math.max(8, snapTo(-boardState.panY + LAYOUT.pad));
+      const colY = new Array(cols).fill(startY);
+      const taken = boardState.elements.map((e) => ({ x: e.x, y: e.y, w: e.w, h: e.h }));
+      let lastCol = 0;
+
+      records.forEach((record, index) => {
+        const hint = record.hint || {};
+        let col;
+
+        if (Number.isInteger(hint.col)) {
+          col = hint.col;
+        } else if (hint.place === "below") {
+          col = lastCol;
+        } else if (hint.place === "right") {
+          col = lastCol + 1;
+        } else if (hint.place === "new-row" || hint.place === "left") {
+          col = 0;
+        } else if (index === 0) {
+          col = 0;
+        } else {
+          // shortest column, ties to the left: keeps the cluster balanced
+          col = 0;
+          for (let i = 1; i < cols; i += 1) if (colY[i] < colY[col] - 1) col = i;
+        }
+        col = Math.max(0, Math.min(cols - 1, col));
+
+        const x = Math.min(WORLD_MAX - record.w, startX + col * (LAYOUT.colW + LAYOUT.gutterX));
+        let y = colY[col];
+        let box = { x, y, w: record.w, h: record.h };
+
+        // never land on an existing block: slide down this column until it is free
+        for (let attempt = 0; attempt <= taken.length; attempt += 1) {
+          const clash = taken.find((b) => boxesOverlap(box, b, 14));
+          if (!clash) break;
+          y = snapTo(clash.y + clash.h + LAYOUT.gutterY);
+          box = { x, y, w: record.w, h: record.h };
+        }
+
+        y = Math.min(y, WORLD_MAX - record.h);
+        taken.push({ ...box, y });
+        record.x = x;
+        record.y = y;
+        colY[col] = y + record.h + LAYOUT.gutterY;
+        lastCol = col;
+      });
+    }
+
+    function pickRenderer(kind, data) {
+      // own keys only: a kind of "constructor" must not resolve to Object
+      if (hasOwn(ELEMENT_RENDERERS, kind)) return ELEMENT_RENDERERS[kind];
+      if (Array.isArray(data.headers) && Array.isArray(data.rows)) return ELEMENT_RENDERERS.table;
+      return findMatrix(data) ? ELEMENT_RENDERERS.grid : ELEMENT_RENDERERS.dynamic;
+    }
+
+    // Build the card, render it while hidden, measure it. Positioning happens in
+    // layoutBatch once the whole batch is known.
+    function mountElement(action) {
       const rawKind = action.kind || (action.type ? String(action.type).replace(/^add_/, "") : "note");
       const kind = String(rawKind).toLowerCase();
-      const renderer = ELEMENT_RENDERERS[kind] || ELEMENT_RENDERERS.dynamic;
+      const data = normalizeData(action);
+
+      const newId = () => `el_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      let id = action.id ? String(action.id) : newId();
+      // ids must stay unique, including against blocks that undo may bring back
+      const taken = [...boardState.elements, ...boardState.removed].some((el) => el.id === id) ||
+        [...world.children].some((node) => node.dataset.id === id);
+      if (taken) id = newId();
 
       const record = {
-        id: action.id || `el_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        id,
         kind,
         title: String(action.title || action.equation || kind.toUpperCase()).slice(0, 60),
         x: 0,
-        y: 0
+        y: 0,
+        data,
+        hint: {
+          place: String(action.place || "").toLowerCase() || undefined,
+          col: Number.isInteger(action.col) ? action.col : undefined
+        }
       };
 
       const card = document.createElement("div");
       card.className = "card";
-      if (action.w) card.style.width = `${Math.max(180, Math.min(520, Number(action.w) || 268))}px`;
-
+      const width = Number(action.w) || 268;
+      card.style.width = `${Math.max(220, Math.min(LAYOUT.colW, width))}px`;
       const header = document.createElement("div");
       header.className = "card-header";
 
       const titleSpan = document.createElement("span");
       titleSpan.className = "card-title";
-      titleSpan.textContent = `${kind.toUpperCase()} // ${record.title}`;
+      titleSpan.textContent = record.title;
+
+      const kindSpan = document.createElement("span");
+      kindSpan.className = "card-kind";
+      kindSpan.textContent = kind.toUpperCase();
+      kindSpan.title = kind;
 
       const closeBtn = document.createElement("button");
       closeBtn.type = "button";
@@ -1037,45 +2410,60 @@
         removeElement(record, card);
       });
 
-      header.append(titleSpan, closeBtn);
+      header.append(kindSpan, titleSpan, closeBtn);
 
       const body = document.createElement("div");
       body.className = "card-body";
 
-      card.append(header, body);
+      const resizeGrip = document.createElement("div");
+      resizeGrip.className = "card-resize";
+      resizeGrip.title = "Drag to resize";
+
+      card.append(header, body, resizeGrip);
+      card.dataset.id = record.id;
       card.style.visibility = "hidden";
+      card.style.left = "0px";
+      card.style.top = "0px";
       // mount BEFORE rendering: a canvas measures 0x0 while detached, which is
       // what left every graph card blank
       world.appendChild(card);
-      renderer(body, action);
+      renderInto(body, { ...action, kind, data });
 
-      const cardW = card.offsetWidth || 268;
-      const cardH = card.offsetHeight || 140;
-      const pos = pickNonOverlappingPosition(action.x, action.y, cardW, cardH);
-
-      record.x = pos.x;
-      record.y = pos.y;
-      record.w = cardW;
-      record.h = cardH;
+      record.w = card.offsetWidth || 268;
+      record.h = card.offsetHeight || 140;
       record.el = card;
-      // kept so the board state sent to the model includes what the block says
-      record.data = action.data && typeof action.data === "object" ? action.data : {}
-
-      card.style.left = `${pos.x}px`;
-      card.style.top = `${pos.y}px`;
-      card.style.visibility = "";
-
-      makeDraggable(card, record);
-      boardState.elements.push(record);
-      updateBlockCounter();
-      return true;
+      return record;
     }
+
+    let topCardZ = 10;
+
+    function commitElement(record) {
+      // the block being touched comes to the front, so it never drags underneath
+      record.el.addEventListener("pointerdown", () => { record.el.style.zIndex = ++topCardZ; }, true);
+      record.el.style.left = `${record.x}px`;
+      record.el.style.top = `${record.y}px`;
+      record.el.style.visibility = "";
+      makeDraggable(record.el, record);
+      makeResizable(record.el, record);
+      // reveals, hints and wrapping change a card's size; keep the snapshot true
+      if (typeof ResizeObserver !== "undefined") {
+        new ResizeObserver(() => {
+          if (!record.el.isConnected) return;
+          record.w = record.el.offsetWidth;
+          record.h = record.el.offsetHeight;
+        }).observe(record.el);
+      }
+      boardState.elements.push(record);
+    }
+
+    let micMutedUntil = 0;
 
     function speakReply(text) {
       if (!boardState.voiceMode || !("speechSynthesis" in window) || !text) return;
       window.speechSynthesis.cancel();
       const utter = new SpeechSynthesisUtterance(text);
       utter.rate = 1.02;
+      utter.onend = utter.onerror = () => { micMutedUntil = Date.now() + 700; };
       window.speechSynthesis.speak(utter);
     }
 
@@ -1088,6 +2476,8 @@
       recognition.continuous = true;
 
       recognition.onresult = (event) => {
+        // otherwise the mic hears the spoken reply and sends it back as a command
+        if (window.speechSynthesis?.speaking || Date.now() < micMutedUntil) return;
         let interim = "";
         let finalText = "";
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -1114,7 +2504,7 @@
       // Without this, a denied mic or a network drop becomes an infinite loop:
       // Chrome fires error -> end -> start -> error, forever, with no feedback.
       recognition.onerror = (event) => {
-        const fatal = ["not-allowed", "service-not-allowed", "audio-capture", "network"];
+        const fatal = ["not-allowed", "service-not-allowed", "audio-capture", "network", "language-not-supported"];
         if (!fatal.includes(event.error)) return;
         boardState.voiceMode = false;
         voiceToggle.classList.remove("active-voice");
@@ -1131,31 +2521,51 @@
     // keyword mock so a venue-network failure never leaves a blank screen.
     const MOCK_EQUATION = "x^2 - 4*x + 3";
 
+    // The longest run of maths in the prompt that compileExpression accepts.
+    function findEquation(promptText) {
+      const names = Object.keys({ ...EXPR_FUNCS, ...EXPR_CONSTS, x: 1 })
+        .sort((a, b) => b.length - a.length)
+        .join("|");
+      const runs = String(promptText).match(
+        new RegExp(`(?:(?<![a-z])(?:${names})(?![a-wyz])|\\d+(?:\\.\\d+)?|[-+*/^().²³π−\\s])+`, "gi")
+      ) || [];
+      return runs
+        .map((run) => run.trim().replace(/^[).*/^\s]+|[-+*/^(.\s]+$/g, ""))
+        .filter((run) => /(^|[^a-z])x(?![a-z])|\dx/i.test(run))
+        .map((run) => run.replace(/X/g, "x"))
+        .filter((run) => compileExpression(run))
+        .sort((a, b) => b.length - a.length)[0] || null;
+    }
+
     function mockPayload(promptText) {
       const text = String(promptText || "").toLowerCase();
       const actions = [];
 
-      // try to honour a requested function, else fall back to the quadratic
-      const fnMatch = String(promptText).match(/(sin|cos|tan|log|ln|sqrt|abs|exp)\s*\(\s*x\s*\)/i);
-      const polyMatch = String(promptText).match(/x\s*\^\s*\d(\s*[-+]\s*\d*\s*\*?\s*x?)*/i);
-      const equation = fnMatch ? fnMatch[0].replace(/\s+/g, "") : polyMatch ? polyMatch[0].replace(/\s+/g, "") : MOCK_EQUATION;
+      // prefer the requested function, else a named curve, else the default one
+      const found = findEquation(promptText);
+      const named = /\bsine?\b/.test(text) ? "sin(x)"
+        : /\bcosine\b/.test(text) ? "cos(x)"
+        : /\btangent\b/.test(text) ? "tan(x)"
+        : null;
+      const equation = found || named || MOCK_EQUATION;
 
-      const looksLikeEquation = /[x]\s*(\^|\*)|\d\s*[x]\b|x\s*\+|x\s*-/.test(text);
-      if (looksLikeEquation || /graph|plot|curve|parabola|sine|function/.test(text)) {
+      // a bare "x" in a sentence is not a request for a graph
+      const looksLikeEquation = Boolean(found) && found !== "x";
+      if (looksLikeEquation || named || /\b(graph|plot|curve|parabola|function)/.test(text)) {
         actions.push({
           kind: "graph",
           title: "PLOT",
           data: { equation }
         });
       }
-      if (/quiz|test|question|practice|check/.test(text)) {
+      if (/\b(quiz|test|question|practice|check)/.test(text)) {
         actions.push({
           kind: "quiz",
           title: "ROOT CHECK",
           data: { question: "Find the roots of x^2 - 4x + 3 = 0.", answer: "x = 1 and x = 3" }
         });
       }
-      if (/step|derive|solve|how|explain/.test(text)) {
+      if (/\b(step|derive|solve|how\b|explain)/.test(text)) {
         actions.push({
           kind: "steps",
           title: "WORKING (MOCK)",
@@ -1178,12 +2588,17 @@
           }
         });
       }
-      return { reply: "Offline mock: the proxy isn't running.", actions, mock: true };
+      return { reply: "Offline mock: the proxy isn't reachable.", actions, mock: true };
     }
 
+    // longer than the proxy's worst case: two upstream calls of ROAR_TIMEOUT (45s) each
+    const REQUEST_TIMEOUT_MS = 100000;
+
     async function fetchRoarActions(promptText) {
+      const sentEvents = boardState.events.slice();
       const request = {
         command: promptText,
+        capabilities: { kinds: rendererKinds() },
         board: boardState.elements.map((e) => ({
           id: e.id,
           kind: e.kind,
@@ -1199,35 +2614,129 @@
           y: Math.round(-boardState.panY),
           w: stage.clientWidth,
           h: stage.clientHeight
-        }
+        },
+        recent_events: sentEvents
       };
 
+      // a hung proxy must not leave SEND disabled forever
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
       try {
         const res = await fetch(API_CONFIG.chat, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(request)
+          body: JSON.stringify(request),
+          signal: abort.signal
         });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok || payload.error) {
-          throw new Error(payload.error || `proxy HTTP ${res.status}`);
+        const payload = await res.json().catch(() => null);
+        if (!res.ok || !payload || payload.error) {
+          throw new Error(payload?.error || (res.ok ? "proxy sent invalid JSON" : `proxy HTTP ${res.status}`));
         }
+        // only clear what was actually delivered: a failed call keeps the trail, and
+        // anything the student did while we were waiting goes out with the next one
+        boardState.events = boardState.events.filter((event) => !sentEvents.includes(event));
         return { reply: payload.reply || "", actions: Array.isArray(payload.actions) ? payload.actions : [] };
       } catch (err) {
         if (!API_CONFIG.offlineMock) throw err;
         addHistoryEntry("LINK", `Proxy unavailable (${err.message}) — offline mock.`, 0);
         return mockPayload(promptText);
+      } finally {
+        clearTimeout(timer);
       }
     }
 
+    const OP_ALIASES = {
+      spawn: "spawn", add: "spawn", create: "spawn",
+      delete: "delete", remove: "delete", close: "delete",
+      update: "update", move: "move", clear: "clear"
+    };
+
+    // The operation may arrive as op, or (models do this) as type or kind.
+    function readOp(action) {
+      if (action.op) {
+        const op = String(action.op).toLowerCase();
+        return hasOwn(OP_ALIASES, op) ? { op: OP_ALIASES[op], action } : { op: null, action };
+      }
+      for (const field of ["type", "kind"]) {
+        const word = String(action[field] || "").toLowerCase();
+        if (hasOwn(OP_ALIASES, word) && OP_ALIASES[word] !== "spawn") {
+          // the word named the operation, so lift any target fields out of data
+          const data = action.data && typeof action.data === "object" ? action.data : {};
+          const lifted = { ...data, ...action, [field]: undefined, data: action.data };
+          // inside data, a target is more specific than the action's own title
+          if (data.target || data.title) {
+            lifted.title = data.title;
+            lifted.target = data.target;
+          }
+          return { op: OP_ALIASES[word], action: lifted };
+        }
+      }
+      return { op: "spawn", action };
+    }
+
+    // One action can either spawn a block or operate on one that already exists.
+    // Actions apply in order, so "add then move" and "clear then add" both work.
     function applyPayload(promptText, payload, fromVoice = false) {
-      const actions = Array.isArray(payload.actions) ? payload.actions : [];
-      let created = 0;
-      actions.forEach((act) => {
-        if (spawnElement(act)) created += 1;
+      const actions = Array.isArray(payload.actions) ? payload.actions.slice(0, 8) : [];
+      let pending = [];
+      let spawned = 0;
+      const done = [];
+
+      const flush = () => {
+        if (!pending.length) return;
+        layoutBatch(pending);
+        pending.forEach(commitElement);
+        spawned += pending.length;
+        pending = [];
+        ensureWorldBounds(); // add blocks near the edge and the board extends
+      };
+
+      actions.forEach((raw) => {
+        if (!raw || typeof raw !== "object") return;
+        const { op, action } = readOp(raw);
+
+        try {
+          if (op === "spawn") {
+            pending.push(mountElement(action));
+            return;
+          }
+          if (!op) {
+            done.push(`unknown operation "${raw.op}"`);
+            return;
+          }
+
+          flush(); // later operations may target blocks added just above
+
+          if (op === "clear") {
+            const count = clearBoard();
+            done.push(`cleared ${count} block${count === 1 ? "" : "s"}`);
+            return;
+          }
+
+          const record = findRecord(action);
+          if (!record) {
+            done.push(`no block matched ${action.id || action.target_id || action.title || action.target || "?"}`);
+            return;
+          }
+          if (op === "delete") {
+            deleteRecord(record);
+            done.push(`removed "${record.title}"`);
+          } else if (op === "update") {
+            done.push(updateRecord(record, action) ? `updated "${record.title}"` : `nothing to update on "${record.title}"`);
+          } else if (op === "move") {
+            done.push(moveRecord(record, action) ? `moved "${record.title}"` : `no position given for "${record.title}"`);
+          }
+        } catch (err) {
+          addHistoryEntry("PANEL", `Could not apply ${op || "action"}: ${err.message}`, 0);
+        }
       });
+
+      flush();
+      ensureWorldBounds();
+      updateBlockCounter();
+
       const replyText = payload.reply || "Actions applied.";
-      addHistoryEntry(promptText, replyText, created);
+      addHistoryEntry(promptText, done.length ? `${replyText} [${done.join("; ")}]` : replyText, spawned);
       if (fromVoice || boardState.voiceMode) {
         speakReply(replyText);
       }
@@ -1236,7 +2745,11 @@
     let commandInFlight = false;
 
     async function handleCommand(text, fromVoice = false) {
-      if (commandInFlight) return; // ignore double submits / overlapping voice turns
+      if (commandInFlight) {
+        // one turn at a time, but say so instead of dropping the command silently
+        addHistoryEntry(text, "Still working on the previous command. Try again in a moment.", 0);
+        return;
+      }
       commandInFlight = true;
       const sendBtn = promptForm.querySelector("button[type='submit']");
       if (sendBtn) {
